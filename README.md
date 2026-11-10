@@ -3,7 +3,29 @@
 App per iPhone e iPad (SwiftUI, iOS 17+) per prendere appunti a mano, nello stile dei quaderni
 digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca nella scrittura.
 
-<!-- SCREENSHOTS -->
+## Schermate
+
+**iPhone**
+
+<p>
+  <img src="docs/screenshots/iphone-library.jpg" width="200" alt="Libreria su iPhone">
+  <img src="docs/screenshots/iphone-editor.jpg" width="200" alt="Quaderno a righe con la barra strumenti">
+  <img src="docs/screenshots/iphone-new.jpg" width="200" alt="Nuovo quaderno">
+  <img src="docs/screenshots/iphone-search.jpg" width="200" alt="Ricerca negli appunti">
+</p>
+
+**iPad**
+
+| | |
+|---|---|
+| <img src="docs/screenshots/ipad-library.jpg" alt="Libreria su iPad"> | <img src="docs/screenshots/ipad-editor.jpg" alt="Appunti di fisica"> |
+| Libreria: cartelle, copertine, prima pagina come copertina | Scrittura, evidenziatore, testo e disegni |
+| <img src="docs/screenshots/ipad-pdf.jpg" alt="PDF annotato"> | <img src="docs/screenshots/ipad-math.jpg" alt="Grafico su carta a quadretti"> |
+| PDF evidenziato e annotato | Carta a quadretti, grafico e area sotto la curva |
+| <img src="docs/screenshots/ipad-new.jpg" alt="Nuovo quaderno su iPad"> | <img src="docs/screenshots/ipad-settings.jpg" alt="Impostazioni e iCloud Drive"> |
+| Nuovo quaderno: copertina, carta e modelli | Impostazioni: salvataggio su iCloud Drive |
+
+<sub>Schermate dal simulatore iOS con quaderni d'esempio (la scrittura a mano è finta).</sub>
 
 ## Cosa fa
 
