@@ -85,6 +85,12 @@ struct EditorView: View {
             if p != .active { model.canvas.saveNow() }
             if p == .background { backup.backupIfAuto(model.library) }
         }
+        .task {
+            if Demo.showPages {
+                try? await Task.sleep(for: .seconds(1.5))
+                showPages = true
+            }
+        }
         .onDisappear {
             model.close()
             backup.scheduleAuto(model.library)

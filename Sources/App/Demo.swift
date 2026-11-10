@@ -15,6 +15,7 @@ enum Demo {
     }
 
     static var searchQuery: String { screen == "search" ? "Newton" : "" }
+    static var showPages: Bool { screen == "pages" }
 
     static func route(library: Library, router: Router) async {
         guard let s = screen else { return }
@@ -23,7 +24,7 @@ enum Demo {
             if let nb = library.notebooks.first(where: { $0.title == title }) { router.open = OpenRequest(notebookID: nb.id, page: 0) }
         }
         switch s {
-        case "editor": open("Fisica 1")
+        case "editor", "pages": open("Fisica 1")
         case "pdf": open("Dispensa termodinamica")
         case "math": open("Analisi 2")
         case "ideas": open("Idee progetto")
@@ -175,7 +176,14 @@ enum Demo {
         riunioni.modified = Date().addingTimeInterval(-30 * hour)
         library.save(riunioni, touch: false)
 
-        var diario = library.create(title: "Diario", cover: 11, style: .plain, template: .narrow, paper: .ivory, format: .a4Portrait, folder: nil)
+        var diario = library.create(title: "Diario", cover: nil, style: .plain, template: .narrow, paper: .ivory, format: .a4Portrait, folder: nil)
+        do {
+            let p = diario.pages[0]
+            var d: [PKStroke] = []
+            for k in 0..<14 { d += writeLine(x0: 40, x1: k == 13 ? 300 : 555, baseline: 96 + CGFloat(k) * 36, size: 9, color: UIColor(hex: "1D4ED8"), rng: &rng) }
+            Store.saveDrawing(PKDrawing(strokes: d), diario.id, p.id)
+            Store.saveItems([text("5 novembre", x: 36, y: 20, w: 300, size: 22, color: "1D4ED8", bold: true)], diario.id, p.id)
+        }
         diario.modified = Date().addingTimeInterval(-120 * hour)
         library.save(diario, touch: false)
 
@@ -218,7 +226,8 @@ enum Demo {
     /// vanish), so pen lines use the uniform monoline ink; the marker gets a wider tip.
     static func stroke(_ pts: [CGPoint], color: UIColor, width: CGFloat, ink: PKInk.InkType = .pen) -> PKStroke {
         let type: PKInk.InkType = ink == .pen ? .monoline : ink
-        let w = ink == .marker ? width * 2 : width
+        // measured in the simulator: code-made pen lines come out about 1.7 pt thinner than asked
+        let w = ink == .marker ? width * 2 : width * 0.6 + 2
         let sp = pts.enumerated().map { i, p in
             PKStrokePoint(location: p, timeOffset: TimeInterval(i) * 0.02, size: CGSize(width: w, height: w),
                           opacity: 1, force: 1, azimuth: 0, altitude: .pi / 3)

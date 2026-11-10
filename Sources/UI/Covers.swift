@@ -117,8 +117,13 @@ struct NotebookCover: View {
         }
         .task(id: version) {
             guard notebook.cover == nil else { return }
-            let id = notebook.id
-            thumb = await Task.detached { UIImage(contentsOfFile: Store.thumb(id).path) }.value
+            let nb = notebook
+            // the saved picture, or the first page drawn now if it is not there yet
+            thumb = await Task.detached { () -> UIImage? in
+                if let img = UIImage(contentsOfFile: Store.thumb(nb.id).path) { return img }
+                guard let first = nb.pages.first else { return nil }
+                return PageRenderer.render(nb, first, width: 360)
+            }.value
         }
     }
 }
