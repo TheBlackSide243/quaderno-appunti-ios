@@ -16,6 +16,8 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, PKToolPickerObserver {
     private var fittedWidth: CGFloat = 0
     private var saveTask: Task<Void, Never>?
     private var dirty = false
+    /// True while a page is being loaded, so putting its ink on the canvas does not count as an edit.
+    private var loading = false
 
     /// Called after the page's ink or boxes were written to disk.
     var onSaved: ((PageInfo) -> Void)?
@@ -87,7 +89,9 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, PKToolPickerObserver {
         saveNow()
         notebook = nb
         page = pg
+        loading = true
         canvas.drawing = Store.loadDrawing(nb.id, pg.id)
+        loading = false
         canvas.undoManager?.removeAllActions()
         paper.bounds = CGRect(origin: .zero, size: pg.size)
         items.bounds = CGRect(origin: .zero, size: pg.size)
@@ -217,6 +221,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, PKToolPickerObserver {
     // MARK: Canvas delegate
 
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+        guard !loading else { return }
         scheduleSave()
         onUndoChange?()
     }

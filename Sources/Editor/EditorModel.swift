@@ -25,9 +25,12 @@ final class EditorModel {
         canvas.onSaved = { [weak self] pg in self?.pageSaved(pg) }
         canvas.onSelection = { [weak self] item in self?.selected = item }
         canvas.onUndoChange = { [weak self] in
-            guard let self else { return }
-            self.canUndo = self.canvas.canUndo
-            self.canRedo = self.canvas.canRedo
+            // PencilKit registers the undo step right after telling us about the change.
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.canUndo = self.canvas.canUndo
+                self.canRedo = self.canvas.canRedo
+            }
         }
         showPage()
     }

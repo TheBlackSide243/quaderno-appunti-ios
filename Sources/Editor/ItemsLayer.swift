@@ -179,7 +179,9 @@ final class ItemView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         handle.layer.borderWidth = 2
         handle.isHidden = true
         addSubview(handle)
-        handle.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(resize)))
+        let handlePan = UIPanGestureRecognizer(target: self, action: #selector(resize))
+        handlePan.delegate = self
+        handle.addGestureRecognizer(handlePan)
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
         addGestureRecognizer(tap)
@@ -187,6 +189,7 @@ final class ItemView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         pan.delegate = self
         addGestureRecognizer(pan)
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinched))
+        pinch.delegate = self
         addGestureRecognizer(pinch)
 
         apply(item)
@@ -255,8 +258,14 @@ final class ItemView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         return super.gestureRecognizerShouldBegin(g)
     }
 
+    /// Moving and resizing a box can happen together, but only with this box's own gestures.
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-        g is UIPinchGestureRecognizer || other is UIPinchGestureRecognizer
+        other.view === self
+    }
+
+    /// The page must not scroll or zoom while a box is being dragged or pinched.
+    func gestureRecognizer(_ g: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+        other.view is UIScrollView
     }
 
     @objc private func moved(_ g: UIPanGestureRecognizer) {
