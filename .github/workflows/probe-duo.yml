@@ -1,0 +1,24 @@
+# Temporary: lists what the simulator offers to open the iPhone Duo. Deleted after use.
+name: Probe Duo
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - name: Probe
+        run: |
+          XC=$(ls -d /Applications/Xcode_[0-9]*.app 2>/dev/null | grep -vi 'beta' | sort -V | tail -1)
+          sudo xcode-select -s "$XC"
+          xcrun simctl help 2>&1
+          echo "==== ui"; xcrun simctl ui 2>&1 || true
+          echo "==== io"; xcrun simctl io 2>&1 || true
+          echo "==== grep"; xcrun simctl help 2>&1 | grep -iE "posture|fold|hinge|state|display|open|close" || true
+          UDID=$(xcrun simctl create probe com.apple.CoreSimulator.SimDeviceType.iPhone-Duo)
+          xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b >/dev/null
+          echo "==== ui help on device"; xcrun simctl ui "$UDID" 2>&1 || true
+          for c in "posture" "fold" "hinge" "display-state" "foldable" "device-posture"; do echo "== ui $c"; xcrun simctl ui "$UDID" $c 2>&1 | head -5; done
+          echo "==== io list"; xcrun simctl io "$UDID" enumerate 2>&1 | head -60
+          echo "==== devicetype plist"; P=$(xcrun simctl list devicetypes -j | python3 -c 'import json,sys;print([t["bundlePath"] for t in json.load(sys.stdin)["devicetypes"] if "Duo" in t["name"]][0])'); ls "$P/Contents/Resources" ; plutil -p "$P/Contents/Resources/profile.plist" 2>/dev/null | grep -iE "posture|fold|hinge|display|state|screen" | head -60
+          echo "==== private frameworks"; strings "$(xcrun -f simctl)" | grep -iE "posture|fold|hinge" | head -40
+          strings /Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/CoreSimulator 2>/dev/null | grep -iE "posture|foldstate|hinge|fold" | head -40
