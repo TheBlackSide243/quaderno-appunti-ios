@@ -24,9 +24,14 @@ struct ToolStrip: View {
                 }
                 if !model.tool.widths.isEmpty {
                     separator
-                    ForEach(model.tool.widths.indices, id: \.self) { i in
-                        widthButton(i)
+                    // The tool and its widths are read once here and passed down: SwiftUI can update
+                    // these buttons once more after the tool changed (to the lasso, which has no
+                    // widths), and reading model.tool.widths[i] inside them then crashed the app.
+                    let tool = model.tool
+                    ForEach(Array(tool.widths.enumerated()), id: \.offset) { i, w in
+                        widthButton(tool, i, w)
                     }
+                    .id(tool)
                 }
                 if model.tool.inks {
                     separator
@@ -64,10 +69,9 @@ struct ToolStrip: View {
         .accessibilityLabel(label)
     }
 
-    private func widthButton(_ i: Int) -> some View {
-        let on = model.widthIndex(of: model.tool) == i
-        let w = model.tool.widths[i]
-        let eraser = model.tool == .eraser
+    private func widthButton(_ tool: Tool, _ i: Int, _ w: CGFloat) -> some View {
+        let on = model.widthIndex(of: tool) == i
+        let eraser = tool == .eraser
         return Button { model.setWidth(i) } label: {
             Group {
                 if eraser && w == 0 {
