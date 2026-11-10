@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Screenshots for the README, taken in the iOS Simulator with the demo notebooks.
-# Needs the Xcode project generated (xcodegen generate). Usage: scripts/screenshots.sh <out dir>
+# Needs the Xcode project generated (xcodegen generate).
+# Usage: scripts/screenshots.sh <out dir> [iphone|ipad|duo]   (no second argument: all three)
 set -euo pipefail
 
 OUT="${1:-screenshots}"
@@ -57,6 +58,33 @@ shoot() {
   xcrun simctl shutdown "$udid" || true
 }
 
-shoot iphone '^iPhone \d+ Pro$' '^iPhone \d+$' 'iPhone'
-shoot ipad 'iPad Pro 13' 'iPad Pro' 'iPad Air' 'iPad'
+# The two-screen iPhone ("duo"): use a device of that type, creating one if the runtime has the
+# type but no device. Prints the iPhone models so a missing one is easy to spot in the log.
+duo_device() {
+  echo "== iPhone models on this runner:"
+  xcrun simctl list devicetypes | grep -i iphone || true
+  pick 'Duo' 'Fold' 'Flip' >/dev/null && return 0
+  local dtype runtime
+  dtype="$(xcrun simctl list devicetypes -j | python3 -c '
+import json, re, sys
+for t in json.load(sys.stdin)["devicetypes"]:
+    if re.search(r"Duo|Fold|Flip", t["name"]) and "iPhone" in t["name"]:
+        print(t["identifier"]); break
+')" || true
+  runtime="$(xcrun simctl list runtimes -j | python3 -c '
+import json, sys
+rts = [r for r in json.load(sys.stdin)["runtimes"] if r.get("isAvailable") and r["platform"] == "iOS"]
+print(rts[-1]["identifier"] if rts else "")
+')" || true
+  if [ -n "$dtype" ] && [ -n "$runtime" ]; then
+    xcrun simctl create "iPhone Duo shots" "$dtype" "$runtime" >/dev/null && echo "   created $dtype"
+  else
+    echo "   no two-screen iPhone type here"
+  fi
+}
+
+ONLY="${2:-}"
+if [ -z "$ONLY" ] || [ "$ONLY" = iphone ]; then shoot iphone '^iPhone \d+ Pro$' '^iPhone \d+$' 'iPhone'; fi
+if [ -z "$ONLY" ] || [ "$ONLY" = ipad ]; then shoot ipad 'iPad Pro 13' 'iPad Pro' 'iPad Air' 'iPad'; fi
+if [ -z "$ONLY" ] || [ "$ONLY" = duo ]; then duo_device; shoot duo 'Duo' 'Fold' 'Flip' 'iPhone Duo shots'; fi
 ls -la "$OUT"

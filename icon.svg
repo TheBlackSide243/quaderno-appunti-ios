@@ -1,19 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- Dark square (iOS rounds the corners itself) with a ruled notebook and a pen, in the app yellow. -->
-  <rect width="1024" height="1024" fill="#0F0F11"/>
-  <rect x="64" y="64" width="896" height="896" rx="200" fill="#1C1C20" stroke="#34343C" stroke-width="8"/>
-  <!-- notebook -->
-  <rect x="250" y="210" width="470" height="600" rx="44" fill="none" stroke="#FACC15" stroke-width="36"/>
-  <line x1="330" y1="210" x2="330" y2="810" stroke="#FACC15" stroke-width="22"/>
-  <line x1="390" y1="380" x2="640" y2="380" stroke="#FACC15" stroke-width="20" stroke-linecap="round" opacity="0.55"/>
-  <line x1="390" y1="470" x2="640" y2="470" stroke="#FACC15" stroke-width="20" stroke-linecap="round" opacity="0.55"/>
-  <line x1="390" y1="560" x2="560" y2="560" stroke="#FACC15" stroke-width="20" stroke-linecap="round" opacity="0.55"/>
-  <!-- handwritten scribble -->
-  <path d="M395 660 q 30 -50 60 0 t 60 0 t 60 0" fill="none" stroke="#FACC15" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- pen -->
-  <g transform="rotate(40 760 560)">
-    <rect x="730" y="300" width="64" height="360" rx="14" fill="#FACC15"/>
-    <rect x="730" y="300" width="64" height="70" rx="14" fill="#0F0F11" stroke="#FACC15" stroke-width="12"/>
-    <path d="M730 660 L794 660 L762 740 Z" fill="#FACC15"/>
+  <!-- Appunti: a yellow notebook with an elastic band, on the app dark. iOS rounds the corners itself. -->
+  <defs>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1024"><stop offset="0" stop-color="#2A2A31"/><stop offset="1" stop-color="#0F0F11"/></linearGradient>
+    <linearGradient id="cover" gradientUnits="userSpaceOnUse" x1="252" y1="182" x2="772" y2="842"><stop offset="0" stop-color="#FDE047"/><stop offset="1" stop-color="#E5A50A"/></linearGradient>
+  </defs>
+  <path d="M 0 0 L 1024 0 L 1024 1024 L 0 1024 L 0 0 Z" fill="url(#bg)"/>
+  <g transform="rotate(-8 512 512)">
+    <path d="M 342 220 L 742 220 C 775.1 220 802 246.9 802 280 L 802 820 C 802 853.1 775.1 880 742 880 L 342 880 C 308.9 880 282 853.1 282 820 L 282 280 C 282 246.9 308.9 220 342 220 Z" fill="#000000" opacity="0.4"/>
+    <path d="M 328 200 L 732 200 C 764 200 790 226 790 258 L 790 802 C 790 834 764 860 732 860 L 328 860 C 296 860 270 834 270 802 L 270 258 C 270 226 296 200 328 200 Z" fill="#DAD5C3"/>
+    <path d="M 320 191 L 724 191 C 756 191 782 217 782 249 L 782 793 C 782 825 756 851 724 851 L 320 851 C 288 851 262 825 262 793 L 262 249 C 262 217 288 191 320 191 Z" fill="#F4F0E2"/>
+    <path d="M 308 182 L 716 182 C 746.9 182 772 207.1 772 238 L 772 786 C 772 816.9 746.9 842 716 842 L 308 842 C 277.1 842 252 816.9 252 786 L 252 238 C 252 207.1 277.1 182 308 182 Z" fill="url(#cover)"/>
+    <path d="M 308 182 L 336 182 L 336 842 L 308 842 C 277.1 842 252 816.9 252 786 L 252 238 C 252 207.1 277.1 182 308 182 Z" fill="#92600A" opacity="0.4"/>
+    <path d="M 662 182 L 706 182 L 706 842 L 662 842 L 662 182 Z" fill="#0F0F11" opacity="0.9"/>
+    <path d="M 408 292 L 592 292 C 606.4 292 618 303.6 618 318 L 618 422 C 618 436.4 606.4 448 592 448 L 408 448 C 393.6 448 382 436.4 382 422 L 382 318 C 382 303.6 393.6 292 408 292 Z" fill="#FFFBEB"/>
+    <path d="M 418 346 L 582 346" fill="none" stroke="#1C1C20" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 418 396 L 524 396" fill="none" stroke="#1C1C20" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" opacity="0.4"/>
   </g>
 </svg>
