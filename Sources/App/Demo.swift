@@ -31,6 +31,7 @@ enum Demo {
         case "search": router.showSearch = true
         case "settings": router.showSettings = true
         case "new": router.showNew = true
+        case "intro": router.showIntro = true
         default: break
         }
     }

@@ -10,6 +10,7 @@ final class Router {
     var showSearch = false
     var showSettings = false
     var showNew = false
+    var showIntro = false
 }
 
 /// The notebook shelf: the root, and one level of folders pushed on top.
@@ -17,6 +18,7 @@ struct LibraryView: View {
     @Environment(Library.self) private var library
     @Environment(CloudBackup.self) private var backup
     @Environment(\.scenePhase) private var phase
+    @AppStorage("intro.seen") private var introSeen = false
     @State private var router = Router()
 
     var body: some View {
@@ -39,7 +41,18 @@ struct LibraryView: View {
             }
             .environment(library)
         }
-        .sheet(isPresented: $router.showSettings) { SettingsView().environment(library).environment(backup) }
+        .sheet(isPresented: $router.showSettings) {
+            SettingsView(onIntro: {
+                router.showSettings = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { router.showIntro = true }
+            })
+            .environment(library).environment(backup)
+        }
+        .fullScreenCover(isPresented: $router.showIntro) {
+            IntroView(offerBackup: !backup.configured,
+                      onBackup: { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { router.showSettings = true } },
+                      onFinish: { introSeen = true })
+        }
         .sheet(isPresented: $router.showNew) {
             NewNotebookView(folder: nil) { nb in router.open = OpenRequest(notebookID: nb.id) }
                 .environment(library)
@@ -52,6 +65,7 @@ struct LibraryView: View {
         }
         .onChange(of: phase) { _, p in if p == .background { backup.backupIfAuto(library) } }
         .task {
+            if !introSeen && !Demo.enabled { router.showIntro = true }
             Demo.seedIfNeeded(library)
             Indexer.shared.catchUp(library.notebooks)
             await Demo.route(library: library, router: router)
@@ -136,6 +150,8 @@ struct ShelfView: View {
                 Button { router.showSearch = true } label: { Image(systemName: "magnifyingglass") }
                     .accessibilityLabel("Cerca")
                 if folder == nil {
+                    Button { router.showIntro = true } label: { Image(systemName: "questionmark.circle") }
+                        .accessibilityLabel("Introduzione")
                     Button { router.showSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("Impostazioni")
                 }

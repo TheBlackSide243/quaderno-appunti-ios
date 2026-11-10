@@ -45,7 +45,7 @@ shoot() {
   xcrun simctl status_bar "$udid" override --time "9:41" --batteryState charged --batteryLevel 100 \
     --cellularMode active --cellularBars 4 --wifiBars 3 || true
   xcrun simctl install "$udid" "$APP"
-  local screens="library editor pdf math ideas pages new search settings"
+  local screens="library editor pdf math ideas pages new search settings intro"
   for s in $screens; do
     xcrun simctl terminate "$udid" "$BUNDLE" 2>/dev/null || true
     xcrun simctl launch "$udid" "$BUNDLE" -demo -screen "$s" >/dev/null

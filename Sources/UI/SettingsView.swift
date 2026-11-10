@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(Library.self) private var library
     @Environment(CloudBackup.self) private var backup
     @Environment(\.dismiss) private var dismiss
+    var onIntro: (() -> Void)?
     @State private var picking = false
     @State private var confirmRestore = false
 
@@ -67,6 +68,13 @@ struct SettingsView: View {
                             .font(.caption).foregroundStyle(Theme.sub)
                     }
                     Panel("Informazioni") {
+                        if let onIntro {
+                            Button(action: onIntro) {
+                                Label("Guarda l'introduzione", systemImage: "sparkles")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .font(.subheadline.weight(.semibold))
+                        }
                         InfoRow("Versione", Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?")
                         Text("La scrittura a mano viene riconosciuta sul dispositivo: nessun appunto lascia il telefono, salvo nella cartella iCloud Drive che scegli tu.")
                             .font(.caption).foregroundStyle(Theme.sub)
