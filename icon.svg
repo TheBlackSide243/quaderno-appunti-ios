@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Dark square (iOS rounds the corners itself) with a ruled notebook and a pen, in the app yellow. -->
+  <rect width="1024" height="1024" fill="#0F0F11"/>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="#1C1C20" stroke="#34343C" stroke-width="8"/>
+  <!-- notebook -->
+  <rect x="250" y="210" width="470" height="600" rx="44" fill="none" stroke="#FACC15" stroke-width="36"/>
+  <line x1="330" y1="210" x2="330" y2="810" stroke="#FACC15" stroke-width="22"/>
+  <line x1="390" y1="380" x2="640" y2="380" stroke="#FACC15" stroke-width="20" stroke-linecap="round" opacity="0.55"/>
+  <line x1="390" y1="470" x2="640" y2="470" stroke="#FACC15" stroke-width="20" stroke-linecap="round" opacity="0.55"/>
+  <line x1="390" y1="560" x2="560" y2="560" stroke="#FACC15" stroke-width="20" stroke-linecap="round" opacity="0.55"/>
+  <!-- handwritten scribble -->
+  <path d="M395 660 q 30 -50 60 0 t 60 0 t 60 0" fill="none" stroke="#FACC15" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- pen -->
+  <g transform="rotate(40 760 560)">
+    <rect x="730" y="300" width="64" height="360" rx="14" fill="#FACC15"/>
+    <rect x="730" y="300" width="64" height="70" rx="14" fill="#0F0F11" stroke="#FACC15" stroke-width="12"/>
+    <path d="M730 660 L794 660 L762 740 Z" fill="#FACC15"/>
+  </g>
+</svg>

@@ -1,0 +1,7 @@
+*.xcodeproj/
+build/
+DerivedData/
+Payload/
+*.ipa
+Resources/Assets.xcassets/AppIcon.appiconset/icon-1024.png
+.DS_Store
