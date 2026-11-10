@@ -192,10 +192,10 @@ enum PageRenderer {
     static func exportPDF(_ nb: Notebook, pages: [PageInfo]? = nil) throws -> URL {
         let list = pages ?? nb.pages
         let safe = nb.title.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(safe.isEmpty ? "Appunti" : safe).pdf")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(safe.isEmpty ? "Quaderno Appunti" : safe).pdf")
         try? FileManager.default.removeItem(at: url)
         let first = list.first?.size ?? PageFormat.a4Portrait.size
-        let info: [String: Any] = [kCGPDFContextTitle as String: nb.title, kCGPDFContextCreator as String: "Appunti"]
+        let info: [String: Any] = [kCGPDFContextTitle as String: nb.title, kCGPDFContextCreator as String: "Quaderno Appunti"]
         let fmt = UIGraphicsPDFRendererFormat()
         fmt.documentInfo = info
         let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: first), format: fmt)

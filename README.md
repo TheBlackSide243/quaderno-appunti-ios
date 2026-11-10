@@ -1,4 +1,4 @@
-# Appunti
+# Quaderno Appunti
 
 App per iPhone e iPad (SwiftUI, iOS 17+) per prendere appunti a mano, nello stile dei quaderni
 digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca nella scrittura.
@@ -63,20 +63,24 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 ## iCloud Drive
 
 In *Impostazioni → iCloud Drive* si sceglie una cartella (per esempio una nuova cartella
-«Appunti» in iCloud Drive): l'app ci copia i quaderni dopo averne chiuso uno e quando va in
+«Quaderno Appunti» in iCloud Drive): l'app ci copia i quaderni dopo averne chiuso uno e quando va in
 secondo piano, oppure con *Salva adesso*. Su un altro iPhone o iPad si sceglie la stessa
 cartella e si tocca *Ripristina*.
 
 La sincronizzazione iCloud automatica di Apple richiede un account sviluppatore a pagamento e
 non funziona con le app installate con Feather o Sideloadly; una cartella scelta in File invece
 funziona sempre. I quaderni restano comunque anche sul dispositivo, in
-*File → Sul mio iPhone → Appunti → Quaderni*.
+*File → Sul mio iPhone → Quaderno Appunti → Quaderni*.
 
 ## Compilare
 
 Nessun Mac necessario: `.github/workflows/ipa.yml` genera il progetto con XcodeGen e produce
-`Appunti-<versione>-unsigned.ipa` (artefatto `appunti-ipa`), da installare con Feather,
+`Quaderno-Appunti-<versione>-unsigned.ipa` (artefatto `appunti-ipa`), da installare con Feather,
 Sideloadly o AltStore. Nuova versione: aumentare `MARKETING_VERSION` in `project.yml`.
+
+`.github/workflows/testflight.yml` carica la stessa versione su TestFlight (identificativo
+`win.shadowbyte.appunti`) a ogni release `v…`, firmandola con la chiave API di App Store Connect
+salvata nei secret del repository.
 
 Le schermate qui sopra le fa `.github/workflows/screenshots.yml` (avvio manuale): compila per il
 simulatore e lancia `scripts/screenshots.sh`, che apre l'app con `-demo -screen <nome>` su un

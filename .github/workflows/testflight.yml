@@ -1,4 +1,4 @@
-# Appunti on TestFlight: archive, sign in the cloud with an App Store Connect API key, upload.
+# Quaderno Appunti on TestFlight: archive, sign in the cloud with an App Store Connect API key, upload.
 # No certificates or Macs anywhere. The archive is built unsigned; the export signs it for the
 # App Store with Apple's cloud-managed distribution certificate (-allowProvisioningUpdates makes
 # the profile) and uploads it.

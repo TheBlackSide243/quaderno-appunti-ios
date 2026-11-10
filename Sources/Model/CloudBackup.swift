@@ -229,7 +229,7 @@ final class CloudBackup {
         let fm = FileManager.default
         let shelf = root.appendingPathComponent("Quaderni", isDirectory: true)
         guard fm.fileExists(atPath: shelf.path) else {
-            return .failure(NSError(domain: "Appunti", code: 1, userInfo: [NSLocalizedDescriptionKey: "nella cartella non c'è nessun salvataggio di Appunti."]))
+            return .failure(NSError(domain: "Appunti", code: 1, userInfo: [NSLocalizedDescriptionKey: "nella cartella non c'è nessun salvataggio di Quaderno Appunti."]))
         }
         var copied = 0
         do {

@@ -20,7 +20,7 @@ struct IntroView: View {
 
     private var steps: [Step] {
         [
-            Step(title: "Benvenuto in Appunti",
+            Step(title: "Benvenuto in Quaderno Appunti",
                  text: "Quaderni da scrivere a mano, PDF da annotare e la ricerca nella tua scrittura. Tutto resta sul tuo iPhone o iPad.",
                  art: AnyView(WelcomeArt())),
             Step(title: "Scrivi come su carta",

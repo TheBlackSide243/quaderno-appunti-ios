@@ -18,7 +18,7 @@ struct SettingsView: View {
                     Panel("iCloud Drive") {
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: "icloud.fill").font(.title2).foregroundStyle(Theme.accent)
-                            Text("Scegli una cartella in iCloud Drive (per esempio una nuova cartella «Appunti»): l'app ci copia i quaderni e iCloud li carica. Da un altro iPhone o iPad scegli la stessa cartella e tocca Ripristina.")
+                            Text("Scegli una cartella in iCloud Drive (per esempio una nuova cartella «Quaderno Appunti»): l'app ci copia i quaderni e iCloud li carica. Da un altro iPhone o iPad scegli la stessa cartella e tocca Ripristina.")
                                 .font(.footnote).foregroundStyle(Theme.sub)
                         }
                         if backup.configured {
@@ -75,7 +75,7 @@ struct SettingsView: View {
                             }
                             .font(.subheadline.weight(.semibold))
                         }
-                        Text("I quaderni si trovano anche in File → Sul mio iPhone (o iPad) → Appunti → Quaderni.")
+                        Text("I quaderni si trovano anche in File → Sul mio iPhone (o iPad) → Quaderno Appunti → Quaderni.")
                             .font(.caption).foregroundStyle(Theme.sub)
                     }
                     Panel("Informazioni") {

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- Appunti: a yellow notebook with an elastic band, on the app dark. iOS rounds the corners itself. -->
+  <!-- Quaderno Appunti: a yellow notebook with an elastic band, on the app dark. iOS rounds the corners itself. -->
   <defs>
     <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1024"><stop offset="0" stop-color="#2A2A31"/><stop offset="1" stop-color="#0F0F11"/></linearGradient>
     <linearGradient id="cover" gradientUnits="userSpaceOnUse" x1="252" y1="182" x2="772" y2="842"><stop offset="0" stop-color="#FDE047"/><stop offset="1" stop-color="#E5A50A"/></linearGradient>

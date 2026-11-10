@@ -48,13 +48,13 @@ jobs:
           cp -R build/Appunti.xcarchive/Products/Applications/Appunti.app Payload/
           codesign -f -s - Payload/Appunti.app
           VER="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Payload/Appunti.app/Info.plist)"
-          zip -qry "Appunti-$VER-unsigned.ipa" Payload
+          zip -qry "Quaderno-Appunti-$VER-unsigned.ipa" Payload
           ls -la ./*.ipa
 
       - uses: actions/upload-artifact@v4
         with:
           name: appunti-ipa
-          path: Appunti-*-unsigned.ipa
+          path: Quaderno-Appunti-*-unsigned.ipa
           retention-days: 14
 
       - uses: actions/upload-artifact@v4

@@ -428,7 +428,7 @@ final class EditorModel {
         let img = PageRenderer.render(notebook, page, width: 2000)
         guard let data = img.pngData() else { throw CocoaError(.fileWriteUnknown) }
         let safe = notebook.title.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(safe.isEmpty ? "Appunti" : safe) - pagina \(pageIndex + 1).png")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(safe.isEmpty ? "Quaderno Appunti" : safe) - pagina \(pageIndex + 1).png")
         try data.write(to: url, options: .atomic)
         return url
     }

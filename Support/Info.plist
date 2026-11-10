@@ -9,7 +9,7 @@
 		<string>it</string>
 	</array>
 	<key>CFBundleDisplayName</key>
-	<string>Appunti</string>
+	<string>Quaderno Appunti</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
