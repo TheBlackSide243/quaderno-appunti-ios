@@ -16,6 +16,9 @@ struct EditorView: View {
     @Environment(CloudBackup.self) private var backup
     @State private var model: EditorModel
     @State private var showPages = false
+    @State private var showSearch = false
+    @State private var showText = false
+    @State private var showScanner = false
     @State private var photo: PhotosPickerItem?
     @State private var showPhotos = false
     @State private var showPDFPicker = false
@@ -29,7 +32,25 @@ struct EditorView: View {
         _model = State(initialValue: EditorModel(library: library, notebook: notebook, page: page))
     }
 
+    private var regular: Bool { hSize == .regular }
+
     var body: some View {
+        dialogs
+            .onChange(of: phase) { _, p in
+                if p != .active { model.canvas.saveNow() }
+                if p == .background { backup.backupIfAuto(model.library) }
+            }
+            .task { await runDemo() }
+            .onDisappear {
+                model.close()
+                backup.scheduleAuto(model.library)
+            }
+            .preferredColorScheme(.dark)
+    }
+
+    // The screen is built in layers so each piece stays quick to compile.
+
+    private var editor: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
                 CanvasHost(view: model.canvas)
@@ -39,8 +60,7 @@ struct EditorView: View {
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                else if hSize != .regular {
+                } else if !regular {
                     PageNav(model: model)
                         .padding(.bottom, 10)
                 }
@@ -56,51 +76,82 @@ struct EditorView: View {
             .toolbarBackground(Theme.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
-        .sheet(isPresented: $showPages) {
-            PagesView(model: model)
-                .presentationDetents([.medium, .large])
-        }
-        .photosPicker(isPresented: $showPhotos, selection: $photo, matching: .images)
-        .onChange(of: photo) { _, item in
-            guard let item else { return }
-            photo = nil
-            Task {
-                if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) {
-                    model.addImage(img)
-                } else {
-                    error = "Non riesco a leggere la foto."
+    }
+
+    private var sheets: some View {
+        editor
+            .sheet(isPresented: $showPages) {
+                PagesView(model: model)
+                    .presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $showSearch) {
+                SearchView(scope: model.notebook.id) { req in
+                    showSearch = false
+                    if let p = req.page { model.go(to: p) }
+                }
+                .environment(model.library)
+            }
+            .sheet(isPresented: $showText) {
+                RecognizedTextView(model: model)
+                    .presentationDetents([.medium, .large])
+            }
+            .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
+            .fullScreenCover(isPresented: $showScanner) {
+                ScannerView { images in
+                    showScanner = false
+                    if let images { model.appendImages(images) }
+                }
+                .ignoresSafeArea()
+            }
+    }
+
+    private var pickers: some View {
+        sheets
+            .photosPicker(isPresented: $showPhotos, selection: $photo, matching: .images)
+            .onChange(of: photo) { _, item in
+                guard let item else { return }
+                photo = nil
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) {
+                        model.addImage(img)
+                    } else {
+                        error = "Non riesco a leggere la foto."
+                    }
                 }
             }
-        }
-        .fileImporter(isPresented: $showPDFPicker, allowedContentTypes: [.pdf]) { result in
-            if case let .success(url) = result { model.appendPDF(url) }
-            if let e = model.library.error { error = e; model.library.error = nil }
-        }
-        .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
-        .confirmationDialog("Cancellare tutto l'inchiostro di questa pagina?", isPresented: $confirmClear, titleVisibility: .visible) {
-            Button("Cancella inchiostro", role: .destructive) { model.canvas.clearInk() }
-        }
-        .alert("Rinomina quaderno", isPresented: $renaming) {
-            TextField("Titolo", text: $newTitle)
-            Button("Annulla", role: .cancel) {}
-            Button("Salva") { model.rename(newTitle) }
-        }
-        .onChange(of: phase) { _, p in
-            if p != .active { model.canvas.saveNow() }
-            if p == .background { backup.backupIfAuto(model.library) }
-        }
-        .task {
-            if Demo.showPages {
-                try? await Task.sleep(for: .seconds(1.5))
-                showPages = true
+            .fileImporter(isPresented: $showPDFPicker, allowedContentTypes: [.pdf]) { result in
+                if case let .success(url) = result { model.appendPDF(url) }
+                if let e = model.library.error { error = e; model.library.error = nil }
             }
-        }
-        .onDisappear {
-            model.close()
-            backup.scheduleAuto(model.library)
-        }
-        .preferredColorScheme(.dark)
     }
+
+    private var dialogs: some View {
+        pickers
+            .confirmationDialog("Cancellare tutto l'inchiostro di questa pagina?", isPresented: $confirmClear, titleVisibility: .visible) {
+                Button("Cancella inchiostro", role: .destructive) { model.canvas.clearInk() }
+            } message: {
+                Text("Testi e foto restano. Puoi annullare con la freccia indietro.")
+            }
+            .alert("Rinomina quaderno", isPresented: $renaming) {
+                TextField("Titolo", text: $newTitle)
+                Button("Annulla", role: .cancel) {}
+                Button("Salva") { model.rename(newTitle) }
+            }
+    }
+
+    /// Opens the screens the screenshot script asks for.
+    private func runDemo() async {
+        guard let screen = Demo.screen else { return }
+        try? await Task.sleep(for: .seconds(1.5))
+        switch screen {
+        case "pages": showPages = true
+        case "ocr": showText = true
+        case "shapes": Demo.drawShapes(model)
+        default: break
+        }
+    }
+
+    // MARK: Bars
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
@@ -114,16 +165,21 @@ struct EditorView: View {
             .accessibilityLabel("Indietro")
             Button { showPages = true } label: { Image(systemName: "square.grid.2x2") }
                 .accessibilityLabel("Tutte le pagine")
+            if regular {
+                Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }
+                    .accessibilityLabel("Cerca nel quaderno")
+            }
         }
         ToolbarItem(placement: .principal) {
             HStack(spacing: 10) {
-                if hSize == .regular {
+                if regular {
                     Button { model.previous() } label: { Image(systemName: "chevron.left") }
                         .disabled(model.pageIndex == 0)
                 }
                 Menu {
                     Button { newTitle = model.notebook.title; renaming = true } label: { Label("Rinomina", systemImage: "pencil") }
                     Button { showPages = true } label: { Label("Tutte le pagine", systemImage: "square.grid.2x2") }
+                    Button { showSearch = true } label: { Label("Cerca nel quaderno", systemImage: "magnifyingglass") }
                 } label: {
                     VStack(spacing: 0) {
                         HStack(spacing: 3) {
@@ -134,9 +190,9 @@ struct EditorView: View {
                         Text("Pagina \(model.pageIndex + 1) di \(model.notebook.pages.count)")
                             .font(.caption2.monospacedDigit()).foregroundStyle(Theme.sub)
                     }
-                    .frame(maxWidth: hSize == .regular ? 220 : 120)
+                    .frame(maxWidth: regular ? 220 : 120)
                 }
-                if hSize == .regular {
+                if regular {
                     Button { model.next() } label: {
                         Image(systemName: model.pageIndex + 1 < model.notebook.pages.count ? "chevron.right" : "plus")
                     }
@@ -150,7 +206,11 @@ struct EditorView: View {
             Button { model.canvas.redo() } label: { Image(systemName: "arrow.uturn.forward") }
                 .disabled(!model.canRedo)
                 .accessibilityLabel("Ripeti")
-            if hSize == .regular {
+            if regular {
+                Button { model.toggleBookmark(model.pageIndex) } label: {
+                    Image(systemName: model.page.isBookmarked ? "bookmark.fill" : "bookmark")
+                }
+                .accessibilityLabel(model.page.isBookmarked ? "Togli il segnalibro" : "Aggiungi un segnalibro")
                 Menu {
                     ForEach(PageTemplate.allCases) { t in
                         Button(t.label) { model.addPage(after: model.pageIndex, template: t) }
@@ -162,54 +222,74 @@ struct EditorView: View {
                 }
                 .accessibilityLabel("Nuova pagina")
             }
-            Menu {
-                Section {
-                    Toggle(isOn: Binding(get: { model.fingerDraws }, set: { model.setFingerDraws($0) })) {
-                        Label("Scrivi anche col dito", systemImage: "hand.draw")
-                    }
-                }
-                Section("Pagina") {
-                    if hSize != .regular {
-                        Menu {
-                            ForEach(PageTemplate.allCases) { t in
-                                Button(t.label) { model.addPage(after: model.pageIndex, template: t) }
-                            }
-                        } label: { Label("Nuova pagina dopo questa", systemImage: "doc.badge.plus") }
-                    }
-                    Menu {
-                        ForEach(PageTemplate.allCases) { t in
-                            Button { model.setTemplate(t, for: model.pageIndex) } label: {
-                                if model.page.template == t { Label(t.label, systemImage: "checkmark") } else { Text(t.label) }
-                            }
-                        }
-                        Divider()
-                        Menu("A tutte le pagine") {
-                            ForEach(PageTemplate.allCases) { t in Button(t.label) { model.setTemplateForAll(t) } }
-                        }
-                    } label: { Label("Modello pagina", systemImage: "squareshape.split.2x2") }
-                    Menu {
-                        ForEach(Paper.allCases) { p in
-                            Button { model.setPaper(p) } label: {
-                                if model.notebook.paper == p { Label(p.label, systemImage: "checkmark") } else { Text(p.label) }
-                            }
-                        }
-                    } label: { Label("Carta", systemImage: "paintpalette") }
-                    Button { showPDFPicker = true } label: { Label("Aggiungi pagine da un PDF", systemImage: "doc.richtext") }
-                    Button(role: .destructive) { confirmClear = true } label: { Label("Cancella inchiostro", systemImage: "eraser") }
-                }
-                Section("Esporta") {
-                    Button { export(currentOnly: false) } label: { Label("Quaderno in PDF", systemImage: "square.and.arrow.up") }
-                    Button { export(currentOnly: true) } label: { Label("Solo questa pagina", systemImage: "doc") }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
+            Menu { moreMenu } label: { Image(systemName: "ellipsis.circle") }
+                .accessibilityLabel("Altro")
         }
     }
 
-    private func export(currentOnly: Bool) {
+    @ViewBuilder
+    private var moreMenu: some View {
+        Section {
+            Toggle(isOn: Binding(get: { model.fingerDraws }, set: { model.setFingerDraws($0) })) {
+                Label("Scrivi anche col dito", systemImage: "hand.draw")
+            }
+        }
+        Section("Aggiungi") {
+            if !regular {
+                Menu {
+                    ForEach(PageTemplate.allCases) { t in
+                        Button(t.label) { model.addPage(after: model.pageIndex, template: t) }
+                    }
+                } label: { Label("Nuova pagina dopo questa", systemImage: "doc.badge.plus") }
+            }
+            Button {
+                if !model.paste() { error = "Negli appunti del telefono non c'è niente da incollare (testo o immagine)." }
+            } label: { Label("Incolla", systemImage: "doc.on.clipboard") }
+            if ScannerView.isSupported {
+                Button { showScanner = true } label: { Label("Scansiona pagine", systemImage: "doc.viewfinder") }
+            }
+            Button { showPDFPicker = true } label: { Label("Pagine da un PDF", systemImage: "doc.richtext") }
+        }
+        Section("Pagina") {
+            Button { model.toggleBookmark(model.pageIndex) } label: {
+                Label(model.page.isBookmarked ? "Togli il segnalibro" : "Aggiungi un segnalibro",
+                      systemImage: model.page.isBookmarked ? "bookmark.slash" : "bookmark")
+            }
+            Menu {
+                ForEach(PageTemplate.allCases) { t in
+                    Button { model.setTemplate(t, for: model.pageIndex) } label: {
+                        if model.page.template == t { Label(t.label, systemImage: "checkmark") } else { Text(t.label) }
+                    }
+                }
+                Divider()
+                Menu("A tutte le pagine") {
+                    ForEach(PageTemplate.allCases) { t in Button(t.label) { model.setTemplateForAll(t) } }
+                }
+            } label: { Label("Modello pagina", systemImage: "squareshape.split.2x2") }
+            Menu {
+                ForEach(Paper.allCases) { p in
+                    Button { model.setPaper(p) } label: {
+                        if model.notebook.paper == p { Label(p.label, systemImage: "checkmark") } else { Text(p.label) }
+                    }
+                }
+            } label: { Label("Carta", systemImage: "paintpalette") }
+            Button { showText = true } label: { Label("Testo riconosciuto", systemImage: "text.viewfinder") }
+            Button(role: .destructive) { confirmClear = true } label: { Label("Cancella inchiostro", systemImage: "eraser") }
+        }
+        Section("Quaderno") {
+            Button { showSearch = true } label: { Label("Cerca nel quaderno", systemImage: "magnifyingglass") }
+            Button { showPages = true } label: { Label("Tutte le pagine", systemImage: "square.grid.2x2") }
+        }
+        Section("Esporta") {
+            Button { export { try model.exportPDF(currentOnly: false) } } label: { Label("Quaderno in PDF", systemImage: "square.and.arrow.up") }
+            Button { export { try model.exportPDF(currentOnly: true) } } label: { Label("Questa pagina in PDF", systemImage: "doc") }
+            Button { export { try model.exportImage() } } label: { Label("Questa pagina come immagine", systemImage: "photo") }
+        }
+    }
+
+    private func export(_ make: () throws -> URL) {
         do {
-            share = ShareFile(url: try model.exportPDF(currentOnly: currentOnly))
+            share = ShareFile(url: try make())
         } catch {
             self.error = "Esportazione non riuscita: \(error.localizedDescription)"
         }
@@ -221,7 +301,7 @@ struct PageNav: View {
     let model: EditorModel
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 2) {
             Button { model.previous() } label: {
                 Image(systemName: "chevron.left").frame(width: 40, height: 36)
             }
@@ -236,6 +316,12 @@ struct PageNav: View {
                     .frame(width: 40, height: 36)
             }
             .accessibilityLabel(model.pageIndex + 1 < model.notebook.pages.count ? "Pagina successiva" : "Nuova pagina")
+            Rectangle().fill(Theme.line).frame(width: 1, height: 20)
+            Button { model.toggleBookmark(model.pageIndex) } label: {
+                Image(systemName: model.page.isBookmarked ? "bookmark.fill" : "bookmark")
+                    .frame(width: 40, height: 36)
+            }
+            .accessibilityLabel(model.page.isBookmarked ? "Togli il segnalibro" : "Aggiungi un segnalibro")
         }
         .font(.body.weight(.semibold))
         .foregroundStyle(Theme.accent)
@@ -244,57 +330,4 @@ struct PageNav: View {
         .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
         .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
     }
-}
-
-/// Controls for the selected text box or picture.
-struct ItemBar: View {
-    let item: PageItem
-    let model: EditorModel
-
-    var body: some View {
-        HStack(spacing: 10) {
-            if item.kind == .text {
-                Button { model.update { $0.fontSize = max(8, $0.fontSize - 2) } } label: { Image(systemName: "textformat.size.smaller") }
-                Text("\(Int(item.fontSize))").font(.footnote.monospacedDigit()).foregroundStyle(Theme.sub).frame(minWidth: 22)
-                Button { model.update { $0.fontSize = min(120, $0.fontSize + 2) } } label: { Image(systemName: "textformat.size.larger") }
-                Button { model.update { $0.bold.toggle() } } label: { Image(systemName: "bold") }
-                    .foregroundStyle(item.bold ? Theme.accent : Theme.text)
-                Divider().frame(height: 22)
-                ForEach(TextColors.all, id: \.self) { hex in
-                    Button { model.update { $0.color = hex } } label: {
-                        Circle().fill(Color(uiColor: UIColor(hex: hex)))
-                            .frame(width: 20, height: 20)
-                            .overlay(Circle().stroke(item.color == hex ? Theme.accent : Theme.line, lineWidth: item.color == hex ? 2.5 : 1))
-                    }
-                }
-            } else {
-                Image(systemName: "photo").foregroundStyle(Theme.sub)
-                Text("Trascina per spostare, pizzica o usa l'angolo per ridimensionare")
-                    .font(.caption).foregroundStyle(Theme.sub).lineLimit(2)
-            }
-            Spacer(minLength: 4)
-            Button { model.canvas.bringSelectedToFront() } label: { Image(systemName: "square.3.layers.3d.top.filled") }
-            Button(role: .destructive) { model.deleteSelected() } label: { Image(systemName: "trash").foregroundStyle(Theme.bad) }
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(Theme.text)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Theme.panel, in: Capsule())
-        .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
-        .frame(maxWidth: 620)
-    }
-}
-
-struct ShareFile: Identifiable {
-    let id = UUID()
-    let url: URL
-}
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }

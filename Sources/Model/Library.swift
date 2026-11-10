@@ -11,6 +11,9 @@ enum Store {
     static let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     static let root = documents.appendingPathComponent("Quaderni", isDirectory: true)
     static let foldersFile = documents.appendingPathComponent("cartelle.json")
+    /// Deleted notebooks wait here for 30 days.
+    static let trash = documents.appendingPathComponent("Cestino", isDirectory: true)
+    static let trashDays = 30
 
     static func dir(_ id: UUID) -> URL { root.appendingPathComponent(id.uuidString, isDirectory: true) }
     static func meta(_ id: UUID) -> URL { dir(id).appendingPathComponent("notebook.json") }
@@ -119,6 +122,8 @@ final class PDFCache {
 final class Library {
     var notebooks: [Notebook] = []
     var folders: [Folder] = []
+    /// Notebooks in the trash, newest first.
+    var trashed: [Notebook] = []
     var error: String?
     /// Bumped whenever a cover image changes, so the grid reloads it.
     var thumbVersion: [UUID: Int] = [:]
@@ -138,6 +143,24 @@ final class Library {
         if let data = try? Data(contentsOf: Store.foldersFile), let f = try? Store.decoder.decode([Folder].self, from: data) {
             folders = f
         }
+        loadTrash()
+    }
+
+    /// Reads the trash and removes for good what has been there longer than 30 days.
+    func loadTrash() {
+        var list: [Notebook] = []
+        let limit = Date().addingTimeInterval(-Double(Store.trashDays) * 86_400)
+        let dirs = (try? FileManager.default.contentsOfDirectory(at: Store.trash, includingPropertiesForKeys: nil)) ?? []
+        for d in dirs {
+            guard let data = try? Data(contentsOf: d.appendingPathComponent("notebook.json")),
+                  let nb = try? Store.decoder.decode(Notebook.self, from: data) else { continue }
+            if let when = nb.deletedAt, when < limit {
+                try? FileManager.default.removeItem(at: d)
+            } else {
+                list.append(nb)
+            }
+        }
+        trashed = list.sorted { ($0.deletedAt ?? .distantPast) > ($1.deletedAt ?? .distantPast) }
     }
 
     func notebook(_ id: UUID) -> Notebook? { notebooks.first { $0.id == id } }
@@ -334,11 +357,66 @@ final class Library {
         Indexer.shared.forget(nb.id)
     }
 
+    /// Moves a notebook to the trash, where it stays for 30 days.
     func delete(_ id: UUID) {
-        try? FileManager.default.removeItem(at: Store.dir(id))
+        guard var nb = notebook(id) else { return }
+        nb.deletedAt = Date()
+        let fm = FileManager.default
+        let dst = Store.trash.appendingPathComponent(id.uuidString, isDirectory: true)
+        do {
+            try fm.createDirectory(at: Store.trash, withIntermediateDirectories: true)
+            if let data = try? Store.encoder.encode(nb) { try? data.write(to: Store.meta(id), options: .atomic) }
+            if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
+            try fm.moveItem(at: Store.dir(id), to: dst)
+        } catch {
+            self.error = "Non riesco a spostare il quaderno nel cestino: \(error.localizedDescription)"
+            return
+        }
         PDFCache.shared.forget(id)
         Indexer.shared.forget(id)
         notebooks.removeAll { $0.id == id }
+        trashed.insert(nb, at: 0)
+    }
+
+    /// Puts a notebook from the trash back on the shelf.
+    func restore(_ id: UUID) {
+        guard var nb = trashed.first(where: { $0.id == id }) else { return }
+        let fm = FileManager.default
+        let src = Store.trash.appendingPathComponent(id.uuidString, isDirectory: true)
+        do {
+            try fm.createDirectory(at: Store.root, withIntermediateDirectories: true)
+            if fm.fileExists(atPath: Store.dir(id).path) { try fm.removeItem(at: Store.dir(id)) }
+            try fm.moveItem(at: src, to: Store.dir(id))
+        } catch {
+            self.error = "Non riesco a ripristinare il quaderno: \(error.localizedDescription)"
+            return
+        }
+        nb.deletedAt = nil
+        if let f = nb.folderID, !folders.contains(where: { $0.id == f }) { nb.folderID = nil }
+        trashed.removeAll { $0.id == id }
+        save(nb, touch: false)
+        refreshThumb(id)
+        Indexer.shared.catchUp([nb])
+    }
+
+    /// Removes a notebook from the trash for good.
+    func deleteForever(_ id: UUID) {
+        try? FileManager.default.removeItem(at: Store.trash.appendingPathComponent(id.uuidString, isDirectory: true))
+        trashed.removeAll { $0.id == id }
+    }
+
+    func emptyTrash() {
+        for nb in trashed {
+            try? FileManager.default.removeItem(at: Store.trash.appendingPathComponent(nb.id.uuidString, isDirectory: true))
+        }
+        trashed = []
+    }
+
+    /// Days left before a trashed notebook is removed for good.
+    func daysLeft(_ nb: Notebook) -> Int {
+        guard let when = nb.deletedAt else { return Store.trashDays }
+        let passed = Int(Date().timeIntervalSince(when) / 86_400)
+        return max(0, Store.trashDays - passed)
     }
 
     // MARK: Folders

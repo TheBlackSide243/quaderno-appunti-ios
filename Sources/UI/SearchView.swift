@@ -4,11 +4,14 @@ import SwiftUI
 struct SearchView: View {
     @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
+    /// When set, only this notebook is searched (from inside the editor).
+    let scope: UUID?
     let onOpen: (OpenRequest) -> Void
 
     @State private var query: String
 
-    init(initialQuery: String = "", onOpen: @escaping (OpenRequest) -> Void) {
+    init(initialQuery: String = "", scope: UUID? = nil, onOpen: @escaping (OpenRequest) -> Void) {
+        self.scope = scope
         self.onOpen = onOpen
         _query = State(initialValue: initialQuery)
     }
@@ -53,8 +56,9 @@ struct SearchView: View {
                     .listRowBackground(Theme.panel)
                 }
             }
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Cerca negli appunti")
-            .navigationTitle("Cerca")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
+                        prompt: scope == nil ? "Cerca negli appunti" : "Cerca in questo quaderno")
+            .navigationTitle(scope == nil ? "Cerca" : "Cerca nel quaderno")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Chiudi") { dismiss() } } }
             .screen()
@@ -62,9 +66,11 @@ struct SearchView: View {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard !Task.isCancelled else { return }
                 searching = true
-                let r = await Indexer.shared.search(query, in: library.notebooks)
+                let list = scope.map { id in library.notebooks.filter { $0.id == id } } ?? library.notebooks
+                let r = await Indexer.shared.search(query, in: list)
                 guard !Task.isCancelled else { return }
-                hits = r
+                // inside a notebook the match on its own title says nothing
+                hits = scope == nil ? r : r.filter { $0.pageIndex != nil }
                 searching = false
             }
         }

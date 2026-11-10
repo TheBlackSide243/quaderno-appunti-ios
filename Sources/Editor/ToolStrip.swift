@@ -16,6 +16,12 @@ struct ToolStrip: View {
                 toolButton("textformat", label: "Testo", on: false) { model.addText() }
                 toolButton("photo", label: "Foto", on: false) { onPhoto() }
                 toolButton("ruler", label: "Righello", on: model.ruler) { model.toggleRuler() }
+                if model.tool == .shape {
+                    separator
+                    ForEach(ShapeKind.allCases) { k in
+                        toolButton(k.icon, label: k.label, on: model.shapeKind == k) { model.setShape(k) }
+                    }
+                }
                 if !model.tool.widths.isEmpty {
                     separator
                     ForEach(model.tool.widths.indices, id: \.self) { i in

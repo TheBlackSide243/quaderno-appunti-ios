@@ -5,7 +5,7 @@ import UIKit
 
 /// The tools of the editor toolbar.
 enum Tool: String, CaseIterable, Codable, Identifiable {
-    case pen, pencil, highlighter, eraser, lasso, hand
+    case pen, pencil, highlighter, eraser, shape, lasso, hand
     var id: String { rawValue }
 
     var label: String {
@@ -14,6 +14,7 @@ enum Tool: String, CaseIterable, Codable, Identifiable {
         case .pencil: "Matita"
         case .highlighter: "Evidenziatore"
         case .eraser: "Gomma"
+        case .shape: "Forme"
         case .lasso: "Lazo"
         case .hand: "Sposta testi e foto"
         }
@@ -25,6 +26,7 @@ enum Tool: String, CaseIterable, Codable, Identifiable {
         case .pencil: "pencil"
         case .highlighter: "highlighter"
         case .eraser: "eraser"
+        case .shape: "square.on.circle"
         case .lasso: "lasso"
         case .hand: "hand.point.up.left"
         }
@@ -37,6 +39,7 @@ enum Tool: String, CaseIterable, Codable, Identifiable {
         case .pencil: [2.5, 4.5, 8]
         case .highlighter: [12, 20, 30]
         case .eraser: [0, 10, 30]
+        case .shape: [1.5, 3, 5]
         case .lasso, .hand: []
         }
     }
@@ -44,7 +47,7 @@ enum Tool: String, CaseIterable, Codable, Identifiable {
     /// The three colours always at hand.
     var presets: [String] {
         switch self {
-        case .pen: ["1C1C20", "1D4ED8", "DC2626"]
+        case .pen, .shape: ["1C1C20", "1D4ED8", "DC2626"]
         case .pencil: ["3F3F46", "1D4ED8", "B91C1C"]
         case .highlighter: ["FDE047", "86EFAC", "F9A8D4"]
         default: []
@@ -59,6 +62,8 @@ struct ToolSettings: Codable {
     var tool: Tool = .pen
     var colors: [String: String] = [:]
     var widths: [String: Int] = [:]
+    /// The shape drawn by the shape tool (optional so settings saved by older versions still load).
+    var shape: ShapeKind?
 
     static let key = "toolSettings"
 
@@ -86,6 +91,8 @@ final class EditorModel {
     var selected: PageItem?
     var canUndo = false
     var canRedo = false
+    /// The tool to go back to on a double tap of the Pencil while erasing.
+    @ObservationIgnored private var toolBeforeEraser: Tool = .pen
     /// Bumped when a page's picture changes, so the page grid reloads it.
     var pageVersion: [UUID: Int] = [:]
 
@@ -111,6 +118,8 @@ final class EditorModel {
                 self.canRedo = self.canvas.canRedo
             }
         }
+        canvas.onPull = { [weak self] direction in self?.pulled(direction) }
+        canvas.onPencilTap = { [weak self] in self?.toggleEraser() }
         showPage()
         if tools.tool == .hand { tools.tool = .pen }
         applyTool()
@@ -121,7 +130,20 @@ final class EditorModel {
     func showPage() {
         guard notebook.pages.indices.contains(pageIndex) else { return }
         canvas.load(notebook, page)
+        canvas.pullLabels = (pageIndex > 0 ? "Pagina precedente" : nil,
+                             pageIndex + 1 < notebook.pages.count ? "Pagina successiva" : "Nuova pagina")
         selected = nil
+    }
+
+    /// The page was pulled past its top (-1) or bottom (+1) and released.
+    private func pulled(_ direction: Int) {
+        if direction < 0 {
+            guard pageIndex > 0 else { return }
+            go(to: pageIndex - 1)
+            canvas.scrollToBottom()
+        } else {
+            next()
+        }
     }
 
     private func pageSaved(_ pg: PageInfo) {
@@ -151,7 +173,21 @@ final class EditorModel {
     func widthIndex(of t: Tool) -> Int { min(tools.widths[t.rawValue] ?? 1, max(0, t.widths.count - 1)) }
 
     func select(_ t: Tool) {
+        if t == .eraser, tools.tool != .eraser, tools.tool != .hand { toolBeforeEraser = tools.tool }
         tools.tool = t
+        tools.save()
+        applyTool()
+    }
+
+    /// Double tap on the Pencil: eraser, and back to the tool used before.
+    func toggleEraser() {
+        select(tool == .eraser ? toolBeforeEraser : .eraser)
+    }
+
+    var shapeKind: ShapeKind { tools.shape ?? .line }
+
+    func setShape(_ k: ShapeKind) {
+        tools.shape = k
         tools.save()
         applyTool()
     }
@@ -178,13 +214,14 @@ final class EditorModel {
         if !drawMode { setDrawMode(true) }
         let w = t.widths.isEmpty ? 0 : t.widths[widthIndex(of: t)]
         let c = UIColor(hex: color(of: t))
+        canvas.shape = t == .shape ? PageCanvasView.ShapeStyle(kind: shapeKind, color: c, width: w) : nil
         switch t {
         case .pen: canvas.setTool(PKInkingTool(.pen, color: c, width: w))
         case .pencil: canvas.setTool(PKInkingTool(.pencil, color: c, width: w))
         case .highlighter: canvas.setTool(PKInkingTool(.marker, color: c, width: w))
         case .eraser: canvas.setTool(w == 0 ? PKEraserTool(.vector) : PKEraserTool(.bitmap, width: w))
         case .lasso: canvas.setTool(PKLassoTool())
-        case .hand: break
+        case .shape, .hand: break
         }
     }
 
@@ -304,13 +341,45 @@ final class EditorModel {
         for p in notebook.pages { pageVersion[p.id, default: 0] += 1 }
     }
 
+    func toggleBookmark(_ index: Int) {
+        guard notebook.pages.indices.contains(index) else { return }
+        notebook.pages[index].bookmarked = notebook.pages[index].isBookmarked ? nil : true
+        library.save(notebook, touch: false)
+    }
+
+    var bookmarkCount: Int { notebook.pages.filter(\.isBookmarked).count }
+
     func appendPDF(_ url: URL) {
         canvas.saveNow()
         library.save(notebook)
+        let before = notebook.pages.count
         if let nb = library.appendPDF(url, to: notebook.id) {
             notebook = nb
-            go(to: notebook.pages.count - 1 < pageIndex ? pageIndex : notebook.pages.count - 1)
+            // open the first of the new pages
+            if notebook.pages.count > before { go(to: before) }
         }
+    }
+
+    /// Adds one page per picture (scans, photos) after the current page; each picture fills its page.
+    func appendImages(_ images: [UIImage]) {
+        guard !images.isEmpty else { return }
+        canvas.saveNow()
+        var at = pageIndex + 1
+        let first = at
+        for img in images {
+            guard let (name, px) = Store.saveImage(img, notebook.id), px.width > 0 else { continue }
+            let w: CGFloat = 595
+            let h = (w * px.height / px.width).rounded()
+            let pg = PageInfo(template: .blank, size: CGSize(width: w, height: h))
+            var item = PageItem(kind: .image, x: 0, y: 0, w: Double(w), h: Double(h))
+            item.image = name
+            Store.saveItems([item], notebook.id, pg.id)
+            notebook.pages.insert(pg, at: at)
+            at += 1
+        }
+        guard at > first else { return }
+        library.save(notebook)
+        go(to: first)
     }
 
     // MARK: Boxes
@@ -327,6 +396,22 @@ final class EditorModel {
         canvas.addImage(img)
     }
 
+    /// Puts what is on the clipboard on the page: a picture, or text in a new box. False if there is nothing.
+    func paste() -> Bool {
+        let board = UIPasteboard.general
+        if board.hasImages, let img = board.image {
+            addImage(img)
+            return true
+        }
+        if board.hasStrings, let s = board.string?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            tools.tool = .hand
+            drawMode = false
+            canvas.addText(s)
+            return true
+        }
+        return false
+    }
+
     func update(_ change: (inout PageItem) -> Void) { canvas.updateSelected(change) }
     func deleteSelected() { canvas.deleteSelected() }
 
@@ -335,5 +420,22 @@ final class EditorModel {
     func exportPDF(currentOnly: Bool) throws -> URL {
         canvas.saveNow()
         return try PageRenderer.exportPDF(notebook, pages: currentOnly ? [page] : nil)
+    }
+
+    /// The current page as a PNG picture.
+    func exportImage() throws -> URL {
+        canvas.saveNow()
+        let img = PageRenderer.render(notebook, page, width: 2000)
+        guard let data = img.pngData() else { throw CocoaError(.fileWriteUnknown) }
+        let safe = notebook.title.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(safe.isEmpty ? "Appunti" : safe) - pagina \(pageIndex + 1).png")
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    /// Handwriting, typed text and PDF text of the current page, read now.
+    func pageText() async -> PageText {
+        canvas.saveNow()
+        return await Indexer.shared.pageText(notebook, page)
     }
 }

@@ -15,17 +15,21 @@ enum Demo {
     }
 
     static var searchQuery: String { screen == "search" ? "Newton" : "" }
-    static var showPages: Bool { screen == "pages" }
 
     static func route(library: Library, router: Router) async {
         guard let s = screen else { return }
         try? await Task.sleep(for: .seconds(1.2))
-        func open(_ title: String) {
-            if let nb = library.notebooks.first(where: { $0.title == title }) { router.open = OpenRequest(notebookID: nb.id, page: 0) }
+        func open(_ title: String, page: Int = 0) {
+            if let nb = library.notebooks.first(where: { $0.title == title }) { router.open = OpenRequest(notebookID: nb.id, page: page) }
         }
         switch s {
         case "editor", "pages": open("Fisica 1")
-        case "pdf": open("Dispensa termodinamica")
+        case "pdf", "ocr": open("Dispensa termodinamica")
+        case "shapes": open("Fisica 1", page: 1)
+        case "trash":
+            // one notebook in the trash to show (not one of those on the first shelf)
+            if library.trashed.isEmpty, let nb = library.notebooks.first(where: { $0.title == "Chimica" }) { library.delete(nb.id) }
+            router.showTrash = true
         case "math": open("Analisi 2")
         case "ideas": open("Idee progetto")
         case "search": router.showSearch = true
@@ -51,6 +55,7 @@ enum Demo {
         var fisica = library.create(title: "Fisica 1", cover: 1, style: .elastic, template: .lined, paper: .white, format: .a4Portrait, folder: nil)
         fisica.pages += [PageInfo(template: .lined, size: PageFormat.a4Portrait.size), PageInfo(template: .lined, size: PageFormat.a4Portrait.size)]
         fisica.favorite = true
+        fisica.pages[0].bookmarked = true
         do {
             let p = fisica.pages[0]
             var d: [PKStroke] = []
@@ -206,6 +211,24 @@ enum Demo {
         }
 
         for nb in library.notebooks { library.refreshThumb(nb.id) }
+    }
+
+    /// Draws one of each shape with the shape tool's own code, for the screenshot.
+    static func drawShapes(_ model: EditorModel) {
+        model.select(.shape)
+        model.setShape(.arrow)
+        let c = model.canvas
+        func style(_ k: ShapeKind, _ hex: String, _ w: CGFloat) -> PageCanvasView.ShapeStyle {
+            PageCanvasView.ShapeStyle(kind: k, color: UIColor(hex: hex), width: w)
+        }
+        c.addShape(style(.rectangle, "1C1C20", 3), from: CGPoint(x: 90, y: 110), to: CGPoint(x: 270, y: 230))
+        c.addShape(style(.ellipse, "1D4ED8", 3), from: CGPoint(x: 330, y: 110), to: CGPoint(x: 510, y: 230))
+        c.addShape(style(.arrow, "DC2626", 3), from: CGPoint(x: 180, y: 240), to: CGPoint(x: 180, y: 360))
+        c.addShape(style(.arrow, "DC2626", 3), from: CGPoint(x: 420, y: 240), to: CGPoint(x: 420, y: 360))
+        c.addShape(style(.rectangle, "15803D", 5), from: CGPoint(x: 130, y: 370), to: CGPoint(x: 470, y: 470))
+        c.addShape(style(.line, "1C1C20", 1.5), from: CGPoint(x: 90, y: 540), to: CGPoint(x: 510, y: 540))
+        c.addShape(style(.line, "7C3AED", 5), from: CGPoint(x: 90, y: 600), to: CGPoint(x: 510, y: 690))
+        c.addShape(style(.ellipse, "EA580C", 1.5), from: CGPoint(x: 220, y: 610), to: CGPoint(x: 380, y: 770))
     }
 
     // MARK: Ink helpers

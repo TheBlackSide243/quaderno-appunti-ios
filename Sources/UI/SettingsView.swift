@@ -64,6 +64,17 @@ struct SettingsView: View {
                     Panel("Sul dispositivo") {
                         InfoRow("Quaderni", "\(library.notebooks.count)")
                         InfoRow("Cartelle", "\(library.folders.count)")
+                        NavigationLink {
+                            TrashView()
+                        } label: {
+                            HStack {
+                                Label("Cestino", systemImage: "trash")
+                                Spacer()
+                                Text("\(library.trashed.count)").foregroundStyle(Theme.sub)
+                                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Theme.sub)
+                            }
+                            .font(.subheadline.weight(.semibold))
+                        }
                         Text("I quaderni si trovano anche in File → Sul mio iPhone (o iPad) → Appunti → Quaderni.")
                             .font(.caption).foregroundStyle(Theme.sub)
                     }

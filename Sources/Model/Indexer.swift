@@ -170,6 +170,21 @@ final class Indexer: @unchecked Sendable {
         return lines.joined(separator: "\n")
     }
 
+    /// Reads one page now (for "recognised text"), without waiting for the background pass.
+    func pageText(_ nb: Notebook, _ page: PageInfo) async -> PageText {
+        await withCheckedContinuation { cont in
+            queue.async {
+                var t = PageText()
+                t.typed = Store.loadItems(nb.id, page.id).filter { $0.kind == .text }.map(\.text).joined(separator: "\n")
+                t.ink = autoreleasepool { self.recognize(Store.loadDrawing(nb.id, page.id), size: page.size) }
+                if let n = page.pdfIndex, let doc = PDFDocument(url: Store.pdf(nb.id)), let p = doc.page(at: n) {
+                    t.pdf = p.string ?? ""
+                }
+                cont.resume(returning: t)
+            }
+        }
+    }
+
     // MARK: Search
 
     /// Looks for `query` in titles, handwriting, typed text and PDF text. Accents and case are ignored.

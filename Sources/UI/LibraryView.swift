@@ -11,6 +11,7 @@ final class Router {
     var showSettings = false
     var showNew = false
     var showIntro = false
+    var showTrash = false
 }
 
 /// The notebook shelf: the root, and one level of folders pushed on top.
@@ -58,6 +59,11 @@ struct LibraryView: View {
                 .environment(library)
                 .pageSized()
         }
+        .sheet(isPresented: $router.showTrash) {
+            NavigationStack { TrashView() }
+                .environment(library)
+                .preferredColorScheme(.dark)
+        }
         .onOpenURL { url in
             guard url.pathExtension.lowercased() == "pdf" else { return }
             if let nb = library.importPDF(url, folder: nil) { router.open = OpenRequest(notebookID: nb.id) }
@@ -96,6 +102,7 @@ struct ShelfView: View {
     @State private var confirmDeleteFolder: Folder?
     @State private var share: ShareFile?
     @State private var busy = false
+    @State private var showScanner = false
 
     private var sort: SortOrder { SortOrder(rawValue: sortRaw) ?? .date }
     private var regular: Bool { hSize == .regular }
@@ -170,6 +177,17 @@ struct ShelfView: View {
             for url in urls { if let nb = library.importPDF(url, folder: folder) { last = nb } }
             if urls.count == 1, let last { router.open = OpenRequest(notebookID: last.id) }
         }
+        .fullScreenCover(isPresented: $showScanner) {
+            ScannerView { images in
+                showScanner = false
+                guard let images, !images.isEmpty else { return }
+                let title = "Scansione del " + Date().formatted(.dateTime.day().month(.abbreviated))
+                if let nb = library.importImages(images, title: title, folder: folder) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { router.open = OpenRequest(notebookID: nb.id) }
+                }
+            }
+            .ignoresSafeArea()
+        }
         .photosPicker(isPresented: $showPhotos, selection: $photoItems, maxSelectionCount: 50, matching: .images)
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }
@@ -199,10 +217,10 @@ struct ShelfView: View {
                 renamingFolder = nil
             }
         }
-        .confirmationDialog("Eliminare «\(confirmDelete?.title ?? "")»? Pagine, inchiostro e PDF verranno cancellati e non si possono recuperare.",
+        .confirmationDialog("Spostare «\(confirmDelete?.title ?? "")» nel cestino? Resta lì \(Store.trashDays) giorni: lo ripristini da Impostazioni → Cestino.",
                             isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
                             titleVisibility: .visible) {
-            Button("Elimina quaderno", role: .destructive) {
+            Button("Sposta nel cestino", role: .destructive) {
                 if let nb = confirmDelete { library.delete(nb.id) }
                 confirmDelete = nil
             }
@@ -247,6 +265,9 @@ struct ShelfView: View {
             Button { showNew = true } label: { Label("Quaderno", systemImage: "book.closed") }
             Button { showImport = true } label: { Label("Importa PDF", systemImage: "doc.richtext") }
             Button { showPhotos = true } label: { Label("Da foto", systemImage: "photo.on.rectangle") }
+            if ScannerView.isSupported {
+                Button { showScanner = true } label: { Label("Scansiona documento", systemImage: "doc.viewfinder") }
+            }
             if folder == nil {
                 Button { renamingFolder = nil; folderName = ""; askFolder = true } label: { Label("Cartella", systemImage: "folder.badge.plus") }
             }

@@ -41,6 +41,30 @@ enum CoverStyle: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// The shapes of the shape tool.
+enum ShapeKind: String, Codable, CaseIterable, Identifiable {
+    case line, arrow, rectangle, ellipse
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .line: "Linea"
+        case .arrow: "Freccia"
+        case .rectangle: "Rettangolo"
+        case .ellipse: "Ellisse"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .line: "line.diagonal"
+        case .arrow: "arrow.up.right"
+        case .rectangle: "rectangle"
+        case .ellipse: "circle"
+        }
+    }
+}
+
 /// How the shelf is ordered.
 enum SortOrder: String, CaseIterable, Identifiable {
     case date, name, kind
@@ -134,7 +158,10 @@ struct PageInfo: Codable, Identifiable, Hashable {
     var pdfIndex: Int?
     var width: Double
     var height: Double
+    /// nil = not bookmarked (optional so older notebooks still open).
+    var bookmarked: Bool?
 
+    var isBookmarked: Bool { bookmarked ?? false }
     var size: CGSize { CGSize(width: width, height: height) }
 
     init(template: PageTemplate, size: CGSize, pdfIndex: Int? = nil) {
@@ -160,6 +187,8 @@ struct Notebook: Codable, Identifiable, Hashable {
     var hasPDF = false
     var lastPage = 0
     var favorite = false
+    /// When it was moved to the trash; nil for notebooks on the shelf.
+    var deletedAt: Date?
 }
 
 struct Folder: Codable, Identifiable, Hashable {
