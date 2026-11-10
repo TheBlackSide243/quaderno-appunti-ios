@@ -34,7 +34,7 @@ enum Demo {
         case "ideas": open("Idee progetto")
         case "search": router.showSearch = true
         case "settings": router.showSettings = true
-        case "new": router.showNew = true
+        case "new", "covers": router.showNew = true
         case "intro": router.showIntro = true
         default: break
         }
@@ -112,12 +112,12 @@ enum Demo {
         analisi.modified = Date().addingTimeInterval(-26 * hour)
         library.save(analisi, touch: false)
 
-        var chimica = library.create(title: "Chimica", cover: 2, style: .label, template: .grid, paper: .white, format: .a4Portrait, folder: uni)
+        var chimica = library.create(title: "Chimica", cover: 2, style: .leaves, template: .grid, paper: .white, format: .a4Portrait, folder: uni)
         chimica.modified = Date().addingTimeInterval(-80 * hour)
         library.save(chimica, touch: false)
 
         // Ideas: dotted page with a small mind map.
-        var idee = library.create(title: "Idee progetto", cover: 2, style: .plain, template: .dotted, paper: .white, format: .a4Portrait, folder: nil)
+        var idee = library.create(title: "Idee progetto", cover: 4, style: .aurora, template: .dotted, paper: .white, format: .a4Portrait, folder: nil)
         do {
             let p = idee.pages[0]
             var d: [PKStroke] = []
@@ -143,7 +143,7 @@ enum Demo {
         library.save(idee, touch: false)
 
         // Trip: lined, a "photo" and some handwriting.
-        var viaggio = library.create(title: "Viaggio Giappone", cover: 6, style: .elastic, template: .lined, paper: .ivory, format: .a4Portrait, folder: nil)
+        var viaggio = library.create(title: "Viaggio Giappone", cover: 1, style: .mountains, template: .lined, paper: .ivory, format: .a4Portrait, folder: nil)
         do {
             let p = viaggio.pages[0]
             var d: [PKStroke] = []
@@ -161,7 +161,7 @@ enum Demo {
         library.save(viaggio, touch: false)
 
         // Shopping list on the checklist ruling.
-        var spesa = library.create(title: "Lista della spesa", cover: 3, style: .label, template: .checklist, paper: .white, format: .a4Portrait, folder: nil)
+        var spesa = library.create(title: "Lista della spesa", cover: 3, style: .dots, template: .checklist, paper: .white, format: .a4Portrait, folder: nil)
         do {
             let p = spesa.pages[0]
             var d: [PKStroke] = []
@@ -178,7 +178,7 @@ enum Demo {
         spesa.modified = Date().addingTimeInterval(-6 * hour)
         library.save(spesa, touch: false)
 
-        var riunioni = library.create(title: "Riunioni", cover: 8, style: .label, template: .cornell, paper: .white, format: .a4Portrait, folder: work)
+        var riunioni = library.create(title: "Riunioni", cover: 8, style: .marble, template: .cornell, paper: .white, format: .a4Portrait, folder: work)
         riunioni.modified = Date().addingTimeInterval(-30 * hour)
         library.save(riunioni, touch: false)
 

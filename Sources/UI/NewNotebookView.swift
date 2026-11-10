@@ -11,7 +11,7 @@ struct NewNotebookView: View {
 
     enum Tab { case cover, paper }
 
-    @State private var tab: Tab = .paper
+    @State private var tab: Tab = Demo.screen == "covers" ? .cover : .paper
     @State private var title = ""
     @State private var cover: Int? = 10
     @State private var style: CoverStyle = .plain
@@ -212,21 +212,31 @@ struct NewNotebookView: View {
                 }
                 .buttonStyle(.plain)
             }
-            ForEach(CoverStyle.allCases) { st in
-                Text(st.label.uppercased()).font(.caption.weight(.bold)).foregroundStyle(Theme.sub).tracking(0.6)
-                LazyVGrid(columns: galleryColumns, spacing: 20) {
-                    ForEach(Covers.colors.indices, id: \.self) { i in
-                        let on = cover == i && style == st
-                        Button { cover = i; style = st } label: {
-                            VStack(spacing: 8) {
-                                CoverArt(color: Covers.color(i), style: st, title: title)
-                                    .aspectRatio(0.76, contentMode: .fit)
-                                    .shadow(color: .black.opacity(0.4), radius: 3, y: 2)
-                                    .overlay(alignment: .bottom) { check(on).offset(y: 14) }
-                                Text(Covers.names[i]).font(.footnote).foregroundStyle(on ? Theme.accent : Theme.text).padding(.top, 10)
+            // the demo screenshot of the covers starts from the illustrated ones
+            ForEach(Demo.screen == "covers" ? [("Illustrate", CoverStyle.illustrated), ("Classiche", CoverStyle.classic)]
+                                            : [("Classiche", CoverStyle.classic), ("Illustrate", CoverStyle.illustrated)], id: \.0) { group in
+                Text(group.0).font(.headline).foregroundStyle(Theme.text).padding(.top, 4)
+                ForEach(group.1) { st in
+                    Text(st.label.uppercased()).font(.caption.weight(.bold)).foregroundStyle(Theme.sub).tracking(0.6)
+                    // one row per style, scrolled sideways through the colours
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(alignment: .top, spacing: regular ? 22 : 14) {
+                            ForEach(Covers.colors.indices, id: \.self) { i in
+                                let on = cover == i && style == st
+                                Button { cover = i; style = st } label: {
+                                    VStack(spacing: 8) {
+                                        CoverArt(color: Covers.color(i), style: st, title: title)
+                                            .frame(width: regular ? 112 : 86, height: (regular ? 112 : 86) / 0.76)
+                                            .shadow(color: .black.opacity(0.4), radius: 3, y: 2)
+                                            .overlay(alignment: .bottom) { check(on).offset(y: 14) }
+                                        Text(Covers.names[i]).font(.footnote).foregroundStyle(on ? Theme.accent : Theme.text).padding(.top, 10)
+                                    }
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .buttonStyle(.plain)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 2)
                     }
                 }
             }

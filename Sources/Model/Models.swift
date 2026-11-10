@@ -27,9 +27,11 @@ enum PageTemplate: String, Codable, CaseIterable, Identifiable {
     ]
 }
 
-/// The look of a notebook cover.
+/// The look of a notebook cover: the three classic ones and the illustrated ones, each in every
+/// cover colour.
 enum CoverStyle: String, Codable, CaseIterable, Identifiable {
     case plain, elastic, label
+    case waves, mosaic, dots, marble, leaves, mountains, stars, terrazzo, aurora
     var id: String { rawValue }
 
     var label: String {
@@ -37,7 +39,32 @@ enum CoverStyle: String, Codable, CaseIterable, Identifiable {
         case .plain: "Semplice"
         case .elastic: "Con elastico"
         case .label: "Con etichetta"
+        case .waves: "Onde"
+        case .mosaic: "Mosaico"
+        case .dots: "Pois"
+        case .marble: "Marmo"
+        case .leaves: "Foglie"
+        case .mountains: "Montagne"
+        case .stars: "Notte stellata"
+        case .terrazzo: "Terrazzo"
+        case .aurora: "Aurora"
         }
+    }
+
+    static let classic: [CoverStyle] = [.plain, .elastic, .label]
+    static let illustrated: [CoverStyle] = [.waves, .mosaic, .dots, .marble, .leaves, .mountains, .stars, .terrazzo, .aurora]
+
+    var isIllustrated: Bool { !Self.classic.contains(self) }
+
+    /// Seed of the pattern, so each style always draws the same picture.
+    var seed: UInt64 {
+        rawValue.unicodeScalars.reduce(1469598103934665603) { ($0 ^ UInt64($1.value)) &* 1099511628211 }
+    }
+
+    /// A style this version does not know (written by a newer one) opens as a plain cover.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = CoverStyle(rawValue: raw) ?? .plain
     }
 }
 

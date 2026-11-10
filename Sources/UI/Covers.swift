@@ -21,6 +21,9 @@ struct CoverArt: View {
                 UnevenRoundedRectangle(topLeadingRadius: 2, bottomLeadingRadius: 2, bottomTrailingRadius: r, topTrailingRadius: r)
                     .fill(color.gradient)
                     .frame(width: w * 0.965, height: h)
+                    .overlay {
+                        if style.isIllustrated { CoverPattern(style: style, color: color) }
+                    }
                     .overlay(alignment: .leading) {
                         // spine
                         Rectangle().fill(.black.opacity(0.28)).frame(width: w * 0.075)
@@ -71,6 +74,9 @@ struct CoverArt: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.top, h * 0.18)
             .padding(.leading, w * 0.07)
+        default:
+            // illustrated: a soft sheen, like a printed board
+            LinearGradient(colors: [.white.opacity(0.14), .clear, .black.opacity(0.12)], startPoint: .topLeading, endPoint: .bottomTrailing)
         }
     }
 }

@@ -388,6 +388,12 @@ struct ShelfView: View {
         Button(role: .destructive) { confirmDeleteFolder = f } label: { Label("Elimina cartella", systemImage: "folder.badge.minus") }
     }
 
+    private func styleButton(_ nb: Notebook, _ st: CoverStyle) -> some View {
+        Button { library.setCoverStyle(nb.id, st) } label: {
+            if nb.cover != nil && (nb.coverStyle ?? .plain) == st { Label(st.label, systemImage: "checkmark") } else { Text(st.label) }
+        }
+    }
+
     @ViewBuilder
     private func menu(_ nb: Notebook) -> some View {
         Button { router.open = OpenRequest(notebookID: nb.id) } label: { Label("Apri", systemImage: "book") }
@@ -398,10 +404,11 @@ struct ShelfView: View {
         Menu {
             Button { library.setCover(nb.id, nil) } label: { Label("Prima pagina", systemImage: "doc") }
             Menu("Stile") {
-                ForEach(CoverStyle.allCases) { st in
-                    Button { library.setCoverStyle(nb.id, st) } label: {
-                        if nb.cover != nil && (nb.coverStyle ?? .plain) == st { Label(st.label, systemImage: "checkmark") } else { Text(st.label) }
-                    }
+                Section("Classiche") {
+                    ForEach(CoverStyle.classic) { st in styleButton(nb, st) }
+                }
+                Section("Illustrate") {
+                    ForEach(CoverStyle.illustrated) { st in styleButton(nb, st) }
                 }
             }
             Menu("Colore") {
