@@ -170,6 +170,14 @@ final class Indexer: @unchecked Sendable {
         return lines.joined(separator: "\n")
     }
 
+    /// Typed and PDF text of a page: quick, without the handwriting.
+    func quickText(_ nb: Notebook, _ page: PageInfo) -> PageText {
+        var t = PageText()
+        t.typed = Store.loadItems(nb.id, page.id).filter { $0.kind == .text }.map(\.text).joined(separator: "\n")
+        if let n = page.pdfIndex, let p = PDFCache.shared.document(nb.id)?.page(at: n) { t.pdf = p.string ?? "" }
+        return t
+    }
+
     /// Reads one page now (for "recognised text"), without waiting for the background pass.
     func pageText(_ nb: Notebook, _ page: PageInfo) async -> PageText {
         await withCheckedContinuation { cont in

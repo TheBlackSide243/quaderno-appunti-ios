@@ -56,7 +56,11 @@ enum Shapes {
     /// The shape as ink: an even line of the given colour and width.
     static func stroke(_ kind: ShapeKind, from a: CGPoint, to b: CGPoint, color: UIColor, width: CGFloat) -> PKStroke {
         let pts = densify(outline(kind, from: a, to: b, width: width))
-        let size = CGSize(width: width, height: width)
+        // PencilKit does not draw a point of size s as s points wide: measured in the simulator, the
+        // line comes out about 1.77 x (s - 1.85) wide, and nothing at all below ~1.9. This asks for
+        // the size that gives the width shown in the preview.
+        let s = width * 0.565 + 1.85
+        let size = CGSize(width: s, height: s)
         let control = pts.enumerated().map { i, p in
             PKStrokePoint(location: p, timeOffset: TimeInterval(i) * 0.01, size: size, opacity: 1, force: 1, azimuth: 0, altitude: .pi / 3)
         }

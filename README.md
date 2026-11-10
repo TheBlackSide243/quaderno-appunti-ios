@@ -32,21 +32,28 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 
 - **Libreria** a griglia o a elenco, ordinata per data, nome o tipo; cartelle, preferiti e un
   menu sotto ogni quaderno (rinomina, copertina, sposta, duplica, esporta, elimina).
+  I quaderni eliminati restano 30 giorni nel **cestino** (Impostazioni → Cestino).
 - **Copertine** semplici, con elastico o con etichetta, in 13 colori, oppure la prima pagina.
 - **Pagine** bianche, a puntini, a quadretti, a righe, a righe strette, Cornell, elenco con
   caselle o pentagramma; carta bianca, avorio, gialla o grigia; A4 verticale/orizzontale,
-  Lettera o quadrato. Griglia delle pagine per saltare, duplicare, spostare o eliminare.
+  Lettera o quadrato. Griglia delle pagine per saltare, duplicare, spostare o eliminare;
+  **segnalibri** per ritrovare subito le pagine importanti.
 - **Barra strumenti** sempre in vista: penna, matita, evidenziatore, gomma (tratto intero,
-  piccola, grande), lazo, mano per spostare testi e foto, righello; tre spessori e tre colori
-  per strumento più un colore a scelta, ricordati tra un quaderno e l'altro. Zoom a due dita,
-  annulla/ripeti. Su iPad si può scrivere solo con la Pencil e scorrere col dito.
+  piccola, grande), **forme** (linea, freccia, rettangolo, ellisse), lazo, mano per spostare
+  testi e foto, righello; tre spessori e tre colori per strumento più un colore a scelta,
+  ricordati tra un quaderno e l'altro. Zoom a due dita, annulla/ripeti. Si cambia pagina anche
+  tirando oltre la fine del foglio. Su iPad si può scrivere solo con la Pencil e scorrere col
+  dito; il doppio tocco sulla Pencil passa alla gomma e torna indietro.
 - **PDF**: importa un PDF come nuovo quaderno (anche con "Apri con" dall'app File) o aggiungine
-  le pagine a un quaderno esistente, e scrivici sopra. Un quaderno si crea anche da foto.
+  le pagine a un quaderno esistente, e scrivici sopra. Un quaderno si crea anche da foto o
+  **scansionando un documento** con la fotocamera.
 - **Testo e foto** sulla pagina: riquadri di testo (dimensione, grassetto, colore) e immagini,
-  da trascinare e ridimensionare.
+  da trascinare e ridimensionare; **Incolla** mette sulla pagina il testo o l'immagine copiati.
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in
-  italiano e inglese), nei riquadri di testo e nel testo dei PDF.
-- **Esporta** il quaderno o una pagina in PDF, da condividere o salvare in File.
+  italiano e inglese), nei riquadri di testo e nel testo dei PDF, in tutta la libreria o solo
+  nel quaderno aperto. **Testo riconosciuto** mostra il testo di una pagina, da copiare.
+- **Esporta** il quaderno o una pagina in PDF, o la pagina come immagine, da condividere,
+  stampare o salvare in File.
 - **Introduzione** in cinque schede al primo avvio, da rivedere quando si vuole dalle
   Impostazioni o dal "?" della libreria.
 

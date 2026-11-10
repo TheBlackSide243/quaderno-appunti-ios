@@ -61,7 +61,7 @@ struct EditorView: View {
                         .padding(.bottom, 12)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 } else if !regular {
-                    PageNav(model: model)
+                    PageNav(model: model, onPages: { showPages = true })
                         .padding(.bottom, 10)
                 }
                 ErrorBanner(error: $error).padding(12).frame(maxHeight: .infinity, alignment: .top)
@@ -163,9 +163,10 @@ struct EditorView: View {
                 Image(systemName: "chevron.backward").fontWeight(.semibold)
             }
             .accessibilityLabel("Indietro")
-            Button { showPages = true } label: { Image(systemName: "square.grid.2x2") }
-                .accessibilityLabel("Tutte le pagine")
+            // on iPhone the page grid opens from the page counter at the bottom, to leave room for the title
             if regular {
+                Button { showPages = true } label: { Image(systemName: "square.grid.2x2") }
+                    .accessibilityLabel("Tutte le pagine")
                 Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }
                     .accessibilityLabel("Cerca nel quaderno")
             }
@@ -190,7 +191,7 @@ struct EditorView: View {
                         Text("Pagina \(model.pageIndex + 1) di \(model.notebook.pages.count)")
                             .font(.caption2.monospacedDigit()).foregroundStyle(Theme.sub)
                     }
-                    .frame(maxWidth: regular ? 220 : 120)
+                    .frame(maxWidth: regular ? 220 : 130)
                 }
                 if regular {
                     Button { model.next() } label: {
@@ -299,6 +300,8 @@ struct EditorView: View {
 /// On iPhone the page arrows live at the bottom, where the thumb is, not in the crowded title bar.
 struct PageNav: View {
     let model: EditorModel
+    /// Opens the grid of all pages (a tap on the page counter).
+    let onPages: () -> Void
 
     var body: some View {
         HStack(spacing: 2) {
@@ -307,10 +310,16 @@ struct PageNav: View {
             }
             .disabled(model.pageIndex == 0)
             .accessibilityLabel("Pagina precedente")
-            Text("\(model.pageIndex + 1) / \(model.notebook.pages.count)")
-                .font(.footnote.monospacedDigit().weight(.semibold))
-                .foregroundStyle(Theme.text)
-                .frame(minWidth: 44)
+            Button(action: onPages) {
+                HStack(spacing: 5) {
+                    Image(systemName: "square.grid.2x2").font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+                    Text("\(model.pageIndex + 1) / \(model.notebook.pages.count)")
+                        .font(.footnote.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                }
+                .frame(minWidth: 62, minHeight: 36)
+            }
+            .accessibilityLabel("Tutte le pagine")
             Button { model.next() } label: {
                 Image(systemName: model.pageIndex + 1 < model.notebook.pages.count ? "chevron.right" : "plus")
                     .frame(width: 40, height: 36)

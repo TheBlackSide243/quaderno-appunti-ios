@@ -433,6 +433,12 @@ final class EditorModel {
         return url
     }
 
+    /// Typed and PDF text of the current page, at once.
+    func quickPageText() -> PageText {
+        canvas.saveNow()
+        return Indexer.shared.quickText(notebook, page)
+    }
+
     /// Handwriting, typed text and PDF text of the current page, read now.
     func pageText() async -> PageText {
         canvas.saveNow()
