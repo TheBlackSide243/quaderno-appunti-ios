@@ -4,6 +4,10 @@ name: Screenshots
 
 on:
   workflow_dispatch:
+    inputs:
+      only:
+        description: Only one device (iphone, ipad or duo); empty for all three
+        default: ''
 
 permissions:
   contents: read
@@ -31,7 +35,7 @@ jobs:
         run: xcodegen generate
 
       - name: Screenshots
-        run: bash scripts/screenshots.sh screenshots
+        run: bash scripts/screenshots.sh screenshots "${{ inputs.only }}"
 
       - uses: actions/upload-artifact@v4
         if: always()

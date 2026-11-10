@@ -52,8 +52,15 @@ shoot() {
     xcrun simctl launch "$udid" "$BUNDLE" -demo -screen "$s" >/dev/null
     # first launch seeds the notebooks; the search waits for the text index
     case "$s" in library) sleep 14 ;; search) sleep 12 ;; *) sleep 8 ;; esac
-    xcrun simctl io "$udid" screenshot --type=png "$OUT/$kind-$s.png" >/dev/null
-    echo "   $kind-$s.png"
+    if [ "$kind" = duo ]; then
+      # Two screens: --display=1 is the outer one (closed), --display=3 the inner one (open).
+      xcrun simctl io "$udid" screenshot --type=png --display=1 "$OUT/duo-closed-$s.png" >/dev/null || true
+      xcrun simctl io "$udid" screenshot --type=png --display=3 "$OUT/duo-open-$s.png" >/dev/null || true
+      echo "   duo-closed-$s.png duo-open-$s.png"
+    else
+      xcrun simctl io "$udid" screenshot --type=png "$OUT/$kind-$s.png" >/dev/null
+      echo "   $kind-$s.png"
+    fi
   done
   xcrun simctl shutdown "$udid" || true
 }
