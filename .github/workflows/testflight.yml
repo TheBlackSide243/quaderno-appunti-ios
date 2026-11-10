@@ -1,0 +1,129 @@
+# Appunti on TestFlight: archive, sign in the cloud with an App Store Connect API key, upload.
+# No certificates or Macs anywhere. The archive is built unsigned; the export signs it for the
+# App Store with Apple's cloud-managed distribution certificate (-allowProvisioningUpdates makes
+# the profile) and uploads it.
+#
+# Secrets: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (the .p8 file's text, Admin key) and APPLE_TEAM_ID.
+# The app on TestFlight has its own bundle ID, win.shadowbyte.appunti, apart from the Feather
+# build (com.local.appunti): the two install side by side and do not share notebooks.
+name: TestFlight
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      bundle:
+        description: Bundle ID on App Store Connect
+        default: win.shadowbyte.appunti
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      BUNDLE: ${{ inputs.bundle || 'win.shadowbyte.appunti' }}
+      TEAM: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Secrets present
+        run: |
+          missing=""
+          for s in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            [ -n "$(printenv "S_$s")" ] || missing="$missing $s"
+          done
+          [ -z "$missing" ] || { echo "::error::Missing secrets:$missing"; exit 1; }
+        env:
+          S_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          S_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          S_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          S_ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+
+      - name: Newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_[0-9]*.app 2>/dev/null | grep -vi 'beta' | sort -V | tail -1)
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+
+      - name: Tools
+        run: brew install xcodegen librsvg
+
+      # The Store wants the icon without an alpha channel: through JPEG and back to PNG.
+      - name: App icon
+        run: |
+          set -eu
+          OUT=Resources/Assets.xcassets/AppIcon.appiconset/icon-1024.png
+          rsvg-convert -w 1024 -h 1024 -b '#0F0F11' icon.svg -o "$RUNNER_TEMP/icon.png"
+          sips -s format jpeg -s formatOptions 100 "$RUNNER_TEMP/icon.png" --out "$RUNNER_TEMP/icon.jpg" > /dev/null
+          sips -s format png "$RUNNER_TEMP/icon.jpg" --out "$OUT" > /dev/null
+          sips -g hasAlpha "$OUT"
+
+      - name: Xcode project
+        run: xcodegen generate
+
+      - name: API key
+        run: |
+          printf '%s' "$P8" > "$RUNNER_TEMP/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/AuthKey.p8"
+        env:
+          P8: ${{ secrets.ASC_KEY_P8 }}
+
+      # A build number TestFlight has not seen yet: the project's, then this workflow's run.
+      - name: Build number
+        run: |
+          BASE=$(grep -m1 'CURRENT_PROJECT_VERSION' project.yml | grep -oE '[0-9]+')
+          echo "BUILD=$BASE.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          echo "Build $BASE.$GITHUB_RUN_NUMBER"
+
+      # Unsigned: the export below signs it for the App Store.
+      - name: Archive
+        run: |
+          set -o pipefail
+          xcodebuild -project Appunti.xcodeproj -scheme Appunti -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$PWD/build/Appunti.xcarchive" \
+            PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE" DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION="$BUILD" \
+            archive 2>&1 | tee build.log | grep -E "error:|warning: unre|BUILD|ARCHIVE|Signing" || true
+          test -d build/Appunti.xcarchive/Products/Applications/Appunti.app || { grep -E "error" build.log | head -60; exit 1; }
+
+      - name: Upload to TestFlight
+        run: |
+          set -o pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$PWD/build/Appunti.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$PWD/build/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            2>&1 | tee -a build.log | grep -vE "^\s*$" | tail -40
+
+      - name: Forget the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: testflight-log
+          path: build.log
+          retention-days: 7
