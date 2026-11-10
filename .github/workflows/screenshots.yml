@@ -1,0 +1,41 @@
+# Screenshots for the README: builds for the iOS Simulator, opens the demo notebooks on an iPhone and
+# an iPad and saves the pictures as an artifact. Started by hand.
+name: Screenshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shots:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_[0-9]*.app 2>/dev/null | grep -vi 'beta' | sort -V | tail -1)
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+
+      - name: Tools
+        run: brew install xcodegen librsvg
+
+      - name: App icon
+        run: rsvg-convert -w 1024 -h 1024 -b '#0F0F11' icon.svg -o Resources/Assets.xcassets/AppIcon.appiconset/icon-1024.png
+
+      - name: Xcode project
+        run: xcodegen generate
+
+      - name: Screenshots
+        run: bash scripts/screenshots.sh screenshots
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots
+          retention-days: 14
