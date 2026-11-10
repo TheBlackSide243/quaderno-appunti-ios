@@ -156,6 +156,15 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate {
         updateContent()
         canvas.bringSubviewToFront(items)
         canvas.sendSubviewToBack(paper)
+        multiplyInk()
+    }
+
+    /// Ink is laid on the paper like on real paper: multiplied, so a highlighter tints the white
+    /// but the black text of a PDF stays black under it instead of being covered.
+    private func multiplyInk() {
+        for v in canvas.subviews where v !== paper && v !== items && v.layer.compositingFilter == nil {
+            v.layer.compositingFilter = "multiplyBlendMode"
+        }
     }
 
     private func updateContent() {

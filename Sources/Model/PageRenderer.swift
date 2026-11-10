@@ -174,7 +174,7 @@ enum PageRenderer {
             drawBackground(nb, page, in: r.cgContext)
             drawItems(nb, items)
             if !drawing.strokes.isEmpty {
-                inkImage(drawing, size: page.size, scale: k).draw(in: CGRect(origin: .zero, size: page.size))
+                inkImage(drawing, size: page.size, scale: k).draw(in: CGRect(origin: .zero, size: page.size), blendMode: .multiply, alpha: 1)
             }
         }
     }
@@ -207,7 +207,7 @@ enum PageRenderer {
                     drawItems(nb, Store.loadItems(nb.id, page.id))
                     let d = Store.loadDrawing(nb.id, page.id)
                     if !d.strokes.isEmpty {
-                        inkImage(d, size: page.size, scale: 3).draw(in: CGRect(origin: .zero, size: page.size))
+                        inkImage(d, size: page.size, scale: 3).draw(in: CGRect(origin: .zero, size: page.size), blendMode: .multiply, alpha: 1)
                     }
                 }
             }
