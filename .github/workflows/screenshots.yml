@@ -8,6 +8,9 @@ on:
       only:
         description: Only one device (iphone, ipad or duo); empty for all three
         default: ''
+      duo_sides:
+        description: iPhone Duo screens (closed open, or only open)
+        default: closed open
 
 permissions:
   contents: read
@@ -36,6 +39,8 @@ jobs:
 
       - name: Screenshots
         run: bash scripts/screenshots.sh screenshots "${{ inputs.only }}"
+        env:
+          DUO_SIDES: ${{ inputs.duo_sides || 'closed open' }}
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -46,23 +46,37 @@ shoot() {
   xcrun simctl status_bar "$udid" override --time "9:41" --batteryState charged --batteryLevel 100 \
     --cellularMode active --cellularBars 4 --wifiBars 3 || true
   xcrun simctl install "$udid" "$APP"
+  if [ "$kind" = duo ]; then
+    # Two screens: --display=1 is the outer one (closed), --display=3 the inner one (open).
+    # The simulator starts closed; switching the outer screen off makes iOS use the inner one.
+    if [ "${DUO_SIDES:-closed open}" != open ]; then pass "$udid" duo-closed 1; fi
+    xcrun simctl io "$udid" screenConfig --display=1 power off || true
+    xcrun simctl io "$udid" screenConfig --display=3 power on || true
+    sleep 6
+    xcrun simctl io "$udid" enumerate 2>/dev/null | grep -E "Power state|Default (width|height)" || true
+    pass "$udid" duo-open 3
+  else
+    pass "$udid" "$kind" ""
+  fi
+  xcrun simctl shutdown "$udid" || true
+}
+
+# One screenshot per demo screen: pass <udid> <file prefix> <display or empty>
+pass() {
+  local udid="$1" prefix="$2" display="$3"
   local screens="library editor pdf math ideas pages shapes ocr new search settings intro trash"
   for s in $screens; do
     xcrun simctl terminate "$udid" "$BUNDLE" 2>/dev/null || true
     xcrun simctl launch "$udid" "$BUNDLE" -demo -screen "$s" >/dev/null
     # first launch seeds the notebooks; the search waits for the text index
     case "$s" in library) sleep 14 ;; search) sleep 12 ;; *) sleep 8 ;; esac
-    if [ "$kind" = duo ]; then
-      # Two screens: --display=1 is the outer one (closed), --display=3 the inner one (open).
-      xcrun simctl io "$udid" screenshot --type=png --display=1 "$OUT/duo-closed-$s.png" >/dev/null || true
-      xcrun simctl io "$udid" screenshot --type=png --display=3 "$OUT/duo-open-$s.png" >/dev/null || true
-      echo "   duo-closed-$s.png duo-open-$s.png"
+    if [ -n "$display" ]; then
+      xcrun simctl io "$udid" screenshot --type=png --display="$display" "$OUT/$prefix-$s.png" >/dev/null || true
     else
-      xcrun simctl io "$udid" screenshot --type=png "$OUT/$kind-$s.png" >/dev/null
-      echo "   $kind-$s.png"
+      xcrun simctl io "$udid" screenshot --type=png "$OUT/$prefix-$s.png" >/dev/null
     fi
+    echo "   $prefix-$s.png"
   done
-  xcrun simctl shutdown "$udid" || true
 }
 
 # The two-screen iPhone ("duo"): use a device of that type, creating one if the runtime has the
