@@ -52,7 +52,8 @@ shoot() {
     if [ "${DUO_SIDES:-closed open}" != open ]; then pass "$udid" duo-closed 1; fi
     xcrun simctl io "$udid" screenConfig --display=1 power off || true
     xcrun simctl io "$udid" screenConfig --display=3 power on || true
-    sleep 6
+    # The home screen restarts on the inner screen: give it time before opening the app.
+    sleep 30
     xcrun simctl io "$udid" enumerate 2>/dev/null | grep -E "Power state|Default (width|height)" || true
     pass "$udid" duo-open 3
   else
@@ -67,7 +68,11 @@ pass() {
   local screens="library editor pdf math ideas pages shapes ocr new search settings intro trash"
   for s in $screens; do
     xcrun simctl terminate "$udid" "$BUNDLE" 2>/dev/null || true
-    xcrun simctl launch "$udid" "$BUNDLE" -demo -screen "$s" >/dev/null
+    local tries=0
+    until xcrun simctl launch "$udid" "$BUNDLE" -demo -screen "$s" >/dev/null; do
+      tries=$((tries + 1)); [ $tries -ge 4 ] && { echo "   $prefix-$s: the app did not open"; continue 2; }
+      sleep 15
+    done
     # first launch seeds the notebooks; the search waits for the text index
     case "$s" in library) sleep 14 ;; search) sleep 12 ;; *) sleep 8 ;; esac
     if [ -n "$display" ]; then
