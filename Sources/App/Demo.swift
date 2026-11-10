@@ -214,12 +214,16 @@ enum Demo {
         }
     }
 
+    /// Strokes built in code: the pen ink thins them with its pressure and speed model (thin ones
+    /// vanish), so pen lines use the uniform monoline ink; the marker gets a wider tip.
     static func stroke(_ pts: [CGPoint], color: UIColor, width: CGFloat, ink: PKInk.InkType = .pen) -> PKStroke {
+        let type: PKInk.InkType = ink == .pen ? .monoline : ink
+        let w = ink == .marker ? width * 2 : width
         let sp = pts.enumerated().map { i, p in
-            PKStrokePoint(location: p, timeOffset: TimeInterval(i) * 0.008, size: CGSize(width: width, height: width),
-                          opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+            PKStrokePoint(location: p, timeOffset: TimeInterval(i) * 0.02, size: CGSize(width: w, height: w),
+                          opacity: 1, force: 1, azimuth: 0, altitude: .pi / 3)
         }
-        return PKStroke(ink: PKInk(ink, color: color), path: PKStrokePath(controlPoints: sp, creationDate: Date()))
+        return PKStroke(ink: PKInk(type, color: color), path: PKStrokePath(controlPoints: sp, creationDate: Date()))
     }
 
     /// A line of cursive-looking scribble: words of looped letters, slanted, with some tall letters.
@@ -245,7 +249,7 @@ enum Demo {
                 cx += w
                 if cx > x1 { break }
             }
-            out.append(stroke(pts, color: color, width: 1.6))
+            out.append(stroke(pts, color: color, width: 1.5))
             x = cx + size * (1.1 + rng.next() * 0.6)
         }
         return out

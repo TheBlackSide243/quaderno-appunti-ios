@@ -12,6 +12,7 @@ struct CanvasHost: UIViewRepresentable {
 struct EditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var phase
+    @Environment(\.horizontalSizeClass) private var hSize
     @Environment(CloudBackup.self) private var backup
     @State private var model: EditorModel
     @State private var showPages = false
@@ -121,7 +122,7 @@ struct EditorView: View {
                         Text("Pagina \(model.pageIndex + 1) di \(model.notebook.pages.count)")
                             .font(.caption2.monospacedDigit()).foregroundStyle(Theme.sub)
                     }
-                    .frame(maxWidth: 200)
+                    .frame(maxWidth: hSize == .regular ? 220 : 120)
                 }
                 Button { model.next() } label: {
                     Image(systemName: model.pageIndex + 1 < model.notebook.pages.count ? "chevron.right" : "plus")
@@ -135,16 +136,18 @@ struct EditorView: View {
             Button { model.canvas.redo() } label: { Image(systemName: "arrow.uturn.forward") }
                 .disabled(!model.canRedo)
                 .accessibilityLabel("Ripeti")
-            Menu {
-                ForEach(PageTemplate.allCases) { t in
-                    Button(t.label) { model.addPage(after: model.pageIndex, template: t) }
+            if hSize == .regular {
+                Menu {
+                    ForEach(PageTemplate.allCases) { t in
+                        Button(t.label) { model.addPage(after: model.pageIndex, template: t) }
+                    }
+                } label: {
+                    Image(systemName: "doc.badge.plus")
+                } primaryAction: {
+                    model.addPage(after: model.pageIndex, template: nil)
                 }
-            } label: {
-                Image(systemName: "doc.badge.plus")
-            } primaryAction: {
-                model.addPage(after: model.pageIndex, template: nil)
+                .accessibilityLabel("Nuova pagina")
             }
-            .accessibilityLabel("Nuova pagina")
             Menu {
                 Section {
                     Toggle(isOn: Binding(get: { model.fingerDraws }, set: { model.setFingerDraws($0) })) {
@@ -152,6 +155,13 @@ struct EditorView: View {
                     }
                 }
                 Section("Pagina") {
+                    if hSize != .regular {
+                        Menu {
+                            ForEach(PageTemplate.allCases) { t in
+                                Button(t.label) { model.addPage(after: model.pageIndex, template: t) }
+                            }
+                        } label: { Label("Nuova pagina dopo questa", systemImage: "doc.badge.plus") }
+                    }
                     Menu {
                         ForEach(PageTemplate.allCases) { t in
                             Button { model.setTemplate(t, for: model.pageIndex) } label: {

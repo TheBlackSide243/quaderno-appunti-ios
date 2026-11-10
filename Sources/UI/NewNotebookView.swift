@@ -274,7 +274,7 @@ extension PageRenderer {
         return UIGraphicsImageRenderer(size: size, format: fmt).image { r in
             r.cgContext.setFillColor(paper.uiColor.cgColor)
             r.cgContext.fill(CGRect(origin: .zero, size: size))
-            drawTemplate(t, size: size, in: r.cgContext)
+            drawTemplate(t, size: size, in: r.cgContext, emphasis: 2.6)
         }
     }
 }

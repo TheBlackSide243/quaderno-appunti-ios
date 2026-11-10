@@ -43,6 +43,7 @@ struct LibraryView: View {
         .sheet(isPresented: $router.showNew) {
             NewNotebookView(folder: nil) { nb in router.open = OpenRequest(notebookID: nb.id) }
                 .environment(library)
+                .pageSized()
         }
         .onOpenURL { url in
             guard url.pathExtension.lowercased() == "pdf" else { return }
@@ -105,6 +106,13 @@ struct ShelfView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 22) {
+                Text(title)
+                    .font(.system(size: regular ? 40 : 34, weight: .bold))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
                 ErrorBanner(error: Binding(get: { library.error }, set: { library.error = $0 }))
                 controls
                 if listMode { list } else { grid }
@@ -120,8 +128,10 @@ struct ShelfView: View {
         }
         .overlay { if busy { ProgressView().controlSize(.large).padding(30).background(Theme.panel, in: RoundedRectangle(cornerRadius: 16)) } }
         .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // the big title is drawn in the page itself, so the bar stays clean
+            ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button { router.showSearch = true } label: { Image(systemName: "magnifyingglass") }
                     .accessibilityLabel("Cerca")
@@ -135,6 +145,7 @@ struct ShelfView: View {
         .sheet(isPresented: $showNew) {
             NewNotebookView(folder: folder) { nb in router.open = OpenRequest(notebookID: nb.id) }
                 .environment(library)
+                .pageSized()
         }
         .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
         .fileImporter(isPresented: $showImport, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { result in
@@ -378,5 +389,17 @@ struct ShelfView: View {
         } label: { Label("Esporta PDF", systemImage: "square.and.arrow.up") }
         Divider()
         Button(role: .destructive) { confirmDelete = nb } label: { Label("Elimina", systemImage: "trash") }
+    }
+}
+
+extension View {
+    /// Full page sheet on iPad (iOS 18+), so galleries are not squeezed into a small form.
+    @ViewBuilder
+    func pageSized() -> some View {
+        if #available(iOS 18.0, *) {
+            self.presentationSizing(.page)
+        } else {
+            self
+        }
     }
 }

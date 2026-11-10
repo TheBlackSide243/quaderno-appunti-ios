@@ -35,8 +35,10 @@ enum PageRenderer {
         drawTemplate(page.template, size: page.size, in: ctx)
     }
 
-    static func drawTemplate(_ t: PageTemplate, size: CGSize, in ctx: CGContext) {
+    /// `emphasis` thickens the lines for small previews.
+    static func drawTemplate(_ t: PageTemplate, size: CGSize, in ctx: CGContext, emphasis: CGFloat = 1) {
         let w = size.width, h = size.height
+        let e = emphasis
         let step: CGFloat = 24
         ctx.saveGState()
         defer { ctx.restoreGState() }
@@ -45,7 +47,7 @@ enum PageRenderer {
             break
         case .lined, .cornell:
             ctx.setStrokeColor(lineColor.cgColor)
-            ctx.setLineWidth(0.6)
+            ctx.setLineWidth(0.6 * e)
             var y: CGFloat = t == .cornell ? 96 : 84
             let bottom = t == .cornell ? h - 150 : h - 30
             let left: CGFloat = t == .cornell ? w * 0.3 : 0
@@ -56,7 +58,7 @@ enum PageRenderer {
             }
             ctx.strokePath()
             ctx.setStrokeColor(marginColor.cgColor)
-            ctx.setLineWidth(0.9)
+            ctx.setLineWidth(0.9 * e)
             if t == .lined {
                 ctx.move(to: CGPoint(x: 64, y: 0))
                 ctx.addLine(to: CGPoint(x: 64, y: h))
@@ -68,7 +70,7 @@ enum PageRenderer {
             ctx.strokePath()
         case .grid:
             ctx.setStrokeColor(lineColor.withAlphaComponent(0.5).cgColor)
-            ctx.setLineWidth(0.5)
+            ctx.setLineWidth(0.5 * e)
             let g: CGFloat = 20
             var x = (w.truncatingRemainder(dividingBy: g)) / 2
             while x <= w { ctx.move(to: CGPoint(x: x, y: 0)); ctx.addLine(to: CGPoint(x: x, y: h)); x += g }
@@ -77,7 +79,7 @@ enum PageRenderer {
             ctx.strokePath()
         case .narrow:
             ctx.setStrokeColor(lineColor.cgColor)
-            ctx.setLineWidth(0.5)
+            ctx.setLineWidth(0.5 * e)
             var y: CGFloat = 60
             while y < h - 24 {
                 ctx.move(to: CGPoint(x: 0, y: y)); ctx.addLine(to: CGPoint(x: w, y: y))
@@ -86,7 +88,7 @@ enum PageRenderer {
             ctx.strokePath()
         case .checklist:
             ctx.setStrokeColor(lineColor.cgColor)
-            ctx.setLineWidth(0.6)
+            ctx.setLineWidth(0.6 * e)
             var y: CGFloat = 96
             let box: CGFloat = 13
             while y < h - 40 {
@@ -96,12 +98,12 @@ enum PageRenderer {
             }
             ctx.strokePath()
             ctx.setStrokeColor(marginColor.cgColor)
-            ctx.setLineWidth(0.9)
+            ctx.setLineWidth(0.9 * e)
             ctx.move(to: CGPoint(x: 40, y: 64)); ctx.addLine(to: CGPoint(x: w - 40, y: 64))
             ctx.strokePath()
         case .music:
             ctx.setStrokeColor(UIColor(white: 0.45, alpha: 0.7).cgColor)
-            ctx.setLineWidth(0.6)
+            ctx.setLineWidth(0.6 * e)
             var top: CGFloat = 80
             let gap: CGFloat = 7
             while top + gap * 4 < h - 40 {
@@ -121,7 +123,7 @@ enum PageRenderer {
             while y < h {
                 var x = (w.truncatingRemainder(dividingBy: g)) / 2 + g / 2
                 while x < w {
-                    ctx.fillEllipse(in: CGRect(x: x - 0.9, y: y - 0.9, width: 1.8, height: 1.8))
+                    ctx.fillEllipse(in: CGRect(x: x - 0.9 * e, y: y - 0.9 * e, width: 1.8 * e, height: 1.8 * e))
                     x += g
                 }
                 y += g
