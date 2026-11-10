@@ -12,6 +12,7 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
   <img src="docs/screenshots/iphone-editor.jpg" width="200" alt="Quaderno a righe con la barra strumenti">
   <img src="docs/screenshots/iphone-new.jpg" width="200" alt="Nuovo quaderno">
   <img src="docs/screenshots/iphone-search.jpg" width="200" alt="Ricerca negli appunti">
+  <img src="docs/screenshots/iphone-intro.jpg" width="200" alt="Introduzione al primo avvio">
 </p>
 
 **iPad**
@@ -46,6 +47,8 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in
   italiano e inglese), nei riquadri di testo e nel testo dei PDF.
 - **Esporta** il quaderno o una pagina in PDF, da condividere o salvare in File.
+- **Introduzione** in cinque schede al primo avvio, da rivedere quando si vuole dalle
+  Impostazioni o dal "?" della libreria.
 
 ## iCloud Drive
 
