@@ -4,7 +4,7 @@ import UIKit
 
 /// The ruling printed on a page.
 enum PageTemplate: String, Codable, CaseIterable, Identifiable {
-    case blank, lined, grid, dotted, cornell
+    case blank, lined, grid, dotted, cornell, narrow, checklist, music
     var id: String { rawValue }
 
     var label: String {
@@ -14,19 +14,57 @@ enum PageTemplate: String, Codable, CaseIterable, Identifiable {
         case .grid: "Quadretti"
         case .dotted: "Puntini"
         case .cornell: "Cornell"
+        case .narrow: "Righe strette"
+        case .checklist: "Elenco"
+        case .music: "Pentagramma"
+        }
+    }
+
+    /// How the gallery of the new notebook groups the rulings.
+    static let groups: [(String, [PageTemplate])] = [
+        ("Essenziali", [.blank, .dotted, .grid, .lined, .narrow]),
+        ("Studio e organizzazione", [.cornell, .checklist, .music]),
+    ]
+}
+
+/// The look of a notebook cover.
+enum CoverStyle: String, Codable, CaseIterable, Identifiable {
+    case plain, elastic, label
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .plain: "Semplice"
+        case .elastic: "Con elastico"
+        case .label: "Con etichetta"
+        }
+    }
+}
+
+/// How the shelf is ordered.
+enum SortOrder: String, CaseIterable, Identifiable {
+    case date, name, kind
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .date: "Data"
+        case .name: "Nome"
+        case .kind: "Tipo"
         }
     }
 }
 
 /// The colour of the paper. Ink keeps its real colour, so the paper is always light.
 enum Paper: String, Codable, CaseIterable, Identifiable {
-    case white, ivory, gray
+    case white, ivory, yellow, gray
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .white: "Bianca"
         case .ivory: "Avorio"
+        case .yellow: "Gialla"
         case .gray: "Grigio chiaro"
         }
     }
@@ -35,6 +73,7 @@ enum Paper: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .white: UIColor(white: 1, alpha: 1)
         case .ivory: UIColor(red: 0.992, green: 0.973, blue: 0.918, alpha: 1)
+        case .yellow: UIColor(red: 0.973, green: 0.957, blue: 0.890, alpha: 1)
         case .gray: UIColor(red: 0.925, green: 0.929, blue: 0.937, alpha: 1)
         }
     }
@@ -77,9 +116,12 @@ enum Covers {
         Color(red: 100 / 255, green: 116 / 255, blue: 139 / 255),
         Color(red: 30 / 255, green: 41 / 255, blue: 59 / 255),
         Color(red: 120 / 255, green: 85 / 255, blue: 60 / 255),
+        Color(red: 181 / 255, green: 160 / 255, blue: 132 / 255),
+        Color(red: 120 / 255, green: 150 / 255, blue: 122 / 255),
+        Color(red: 52 / 255, green: 58 / 255, blue: 68 / 255),
     ]
 
-    static let names = ["Giallo", "Blu", "Verde", "Rosso", "Viola", "Rosa", "Arancione", "Ardesia", "Notte", "Cuoio"]
+    static let names = ["Giallo", "Blu", "Verde", "Rosso", "Viola", "Rosa", "Arancione", "Ardesia", "Notte", "Cuoio", "Kraft", "Salvia", "Antracite"]
 
     static func color(_ index: Int) -> Color { colors[((index % colors.count) + colors.count) % colors.count] }
 }
@@ -108,6 +150,8 @@ struct Notebook: Codable, Identifiable, Hashable {
     var title: String
     /// Index in `Covers.colors`, or nil to show the first page as the cover.
     var cover: Int?
+    /// nil = plain.
+    var coverStyle: CoverStyle?
     var paper: Paper = .white
     var folderID: UUID?
     var created = Date()

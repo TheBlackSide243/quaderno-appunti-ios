@@ -1,6 +1,76 @@
 import Observation
+import PencilKit
 import SwiftUI
 import UIKit
+
+/// The tools of the editor toolbar.
+enum Tool: String, CaseIterable, Codable, Identifiable {
+    case pen, pencil, highlighter, eraser, lasso, hand
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .pen: "Penna"
+        case .pencil: "Matita"
+        case .highlighter: "Evidenziatore"
+        case .eraser: "Gomma"
+        case .lasso: "Lazo"
+        case .hand: "Sposta testi e foto"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .pen: "pencil.tip"
+        case .pencil: "pencil"
+        case .highlighter: "highlighter"
+        case .eraser: "eraser"
+        case .lasso: "lasso"
+        case .hand: "hand.point.up.left"
+        }
+    }
+
+    /// The three thicknesses offered (for the eraser: whole stroke, small, large).
+    var widths: [CGFloat] {
+        switch self {
+        case .pen: [1.5, 3, 6]
+        case .pencil: [2.5, 4.5, 8]
+        case .highlighter: [12, 20, 30]
+        case .eraser: [0, 10, 30]
+        case .lasso, .hand: []
+        }
+    }
+
+    /// The three colours always at hand.
+    var presets: [String] {
+        switch self {
+        case .pen: ["1C1C20", "1D4ED8", "DC2626"]
+        case .pencil: ["3F3F46", "1D4ED8", "B91C1C"]
+        case .highlighter: ["FDE047", "86EFAC", "F9A8D4"]
+        default: []
+        }
+    }
+
+    var inks: Bool { !presets.isEmpty }
+}
+
+/// What the toolbar remembers between notebooks.
+struct ToolSettings: Codable {
+    var tool: Tool = .pen
+    var colors: [String: String] = [:]
+    var widths: [String: Int] = [:]
+
+    static let key = "toolSettings"
+
+    static func load() -> ToolSettings {
+        guard let d = UserDefaults.standard.data(forKey: key), let s = try? JSONDecoder().decode(ToolSettings.self, from: d) else { return ToolSettings() }
+        return s
+    }
+
+    func save() {
+        if let d = try? JSONEncoder().encode(self) { UserDefaults.standard.set(d, forKey: Self.key) }
+    }
+}
 
 /// State of an open notebook.
 @MainActor
@@ -10,6 +80,9 @@ final class EditorModel {
     var notebook: Notebook
     var pageIndex: Int
     var drawMode = true
+    var tools = ToolSettings.load()
+    var fingerDraws: Bool
+    var ruler = false
     var selected: PageItem?
     var canUndo = false
     var canRedo = false
@@ -22,6 +95,12 @@ final class EditorModel {
         self.library = library
         self.notebook = notebook
         self.pageIndex = min(max(0, page ?? notebook.lastPage), max(0, notebook.pages.count - 1))
+        if UserDefaults.standard.object(forKey: "fingerDraws") != nil {
+            fingerDraws = UserDefaults.standard.bool(forKey: "fingerDraws")
+        } else {
+            fingerDraws = UIDevice.current.userInterfaceIdiom == .phone || !UIPencilInteraction.prefersPencilOnlyDrawing
+        }
+        canvas.fingerDraws = fingerDraws
         canvas.onSaved = { [weak self] pg in self?.pageSaved(pg) }
         canvas.onSelection = { [weak self] item in self?.selected = item }
         canvas.onUndoChange = { [weak self] in
@@ -33,6 +112,8 @@ final class EditorModel {
             }
         }
         showPage()
+        if tools.tool == .hand { tools.tool = .pen }
+        applyTool()
     }
 
     var page: PageInfo { notebook.pages[pageIndex] }
@@ -60,6 +141,69 @@ final class EditorModel {
         drawMode = on
         canvas.drawMode = on
         if on { selected = nil }
+    }
+
+    // MARK: Tools
+
+    var tool: Tool { tools.tool }
+
+    func color(of t: Tool) -> String { tools.colors[t.rawValue] ?? t.presets.first ?? "1C1C20" }
+    func widthIndex(of t: Tool) -> Int { min(tools.widths[t.rawValue] ?? 1, max(0, t.widths.count - 1)) }
+
+    func select(_ t: Tool) {
+        tools.tool = t
+        tools.save()
+        applyTool()
+    }
+
+    func setColor(_ hex: String) {
+        guard tool.inks else { return }
+        tools.colors[tool.rawValue] = hex
+        tools.save()
+        applyTool()
+    }
+
+    func setWidth(_ i: Int) {
+        tools.widths[tool.rawValue] = i
+        tools.save()
+        applyTool()
+    }
+
+    private func applyTool() {
+        let t = tool
+        if t == .hand {
+            setDrawMode(false)
+            return
+        }
+        if !drawMode { setDrawMode(true) }
+        let w = t.widths.isEmpty ? 0 : t.widths[widthIndex(of: t)]
+        let c = UIColor(hex: color(of: t))
+        switch t {
+        case .pen: canvas.setTool(PKInkingTool(.pen, color: c, width: w))
+        case .pencil: canvas.setTool(PKInkingTool(.pencil, color: c, width: w))
+        case .highlighter: canvas.setTool(PKInkingTool(.marker, color: c, width: w))
+        case .eraser: canvas.setTool(w == 0 ? PKEraserTool(.vector) : PKEraserTool(.bitmap, width: w))
+        case .lasso: canvas.setTool(PKLassoTool())
+        case .hand: break
+        }
+    }
+
+    func rename(_ title: String) {
+        let t = title.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return }
+        notebook.title = t
+        library.save(notebook, touch: false)
+    }
+
+    func setFingerDraws(_ on: Bool) {
+        fingerDraws = on
+        canvas.fingerDraws = on
+        UserDefaults.standard.set(on, forKey: "fingerDraws")
+    }
+
+    func toggleRuler() {
+        ruler.toggle()
+        canvas.rulerActive = ruler
     }
 
     // MARK: Pages
@@ -172,11 +316,13 @@ final class EditorModel {
     // MARK: Boxes
 
     func addText() {
+        tools.tool = .hand
         drawMode = false
         canvas.addText()
     }
 
     func addImage(_ img: UIImage) {
+        tools.tool = .hand
         drawMode = false
         canvas.addImage(img)
     }

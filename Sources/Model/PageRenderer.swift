@@ -75,6 +75,45 @@ enum PageRenderer {
             var y = (h.truncatingRemainder(dividingBy: g)) / 2
             while y <= h { ctx.move(to: CGPoint(x: 0, y: y)); ctx.addLine(to: CGPoint(x: w, y: y)); y += g }
             ctx.strokePath()
+        case .narrow:
+            ctx.setStrokeColor(lineColor.cgColor)
+            ctx.setLineWidth(0.5)
+            var y: CGFloat = 60
+            while y < h - 24 {
+                ctx.move(to: CGPoint(x: 0, y: y)); ctx.addLine(to: CGPoint(x: w, y: y))
+                y += 18
+            }
+            ctx.strokePath()
+        case .checklist:
+            ctx.setStrokeColor(lineColor.cgColor)
+            ctx.setLineWidth(0.6)
+            var y: CGFloat = 96
+            let box: CGFloat = 13
+            while y < h - 40 {
+                ctx.move(to: CGPoint(x: 64, y: y)); ctx.addLine(to: CGPoint(x: w - 40, y: y))
+                ctx.addRect(CGRect(x: 40, y: y - box - 5, width: box, height: box))
+                y += 32
+            }
+            ctx.strokePath()
+            ctx.setStrokeColor(marginColor.cgColor)
+            ctx.setLineWidth(0.9)
+            ctx.move(to: CGPoint(x: 40, y: 64)); ctx.addLine(to: CGPoint(x: w - 40, y: 64))
+            ctx.strokePath()
+        case .music:
+            ctx.setStrokeColor(UIColor(white: 0.45, alpha: 0.7).cgColor)
+            ctx.setLineWidth(0.6)
+            var top: CGFloat = 80
+            let gap: CGFloat = 7
+            while top + gap * 4 < h - 40 {
+                for i in 0..<5 {
+                    let y = top + CGFloat(i) * gap
+                    ctx.move(to: CGPoint(x: 40, y: y)); ctx.addLine(to: CGPoint(x: w - 40, y: y))
+                }
+                ctx.move(to: CGPoint(x: 40, y: top)); ctx.addLine(to: CGPoint(x: 40, y: top + gap * 4))
+                ctx.move(to: CGPoint(x: w - 40, y: top)); ctx.addLine(to: CGPoint(x: w - 40, y: top + gap * 4))
+                top += gap * 4 + 46
+            }
+            ctx.strokePath()
         case .dotted:
             ctx.setFillColor(lineColor.cgColor)
             let g: CGFloat = 20

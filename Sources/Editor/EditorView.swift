@@ -8,10 +8,11 @@ struct CanvasHost: UIViewRepresentable {
     func updateUIView(_ uiView: PageCanvasView, context: Context) {}
 }
 
-/// An open notebook.
+/// An open notebook: navigation bar, tool bar, then the page.
 struct EditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var phase
+    @Environment(CloudBackup.self) private var backup
     @State private var model: EditorModel
     @State private var showPages = false
     @State private var photo: PhotosPickerItem?
@@ -20,6 +21,8 @@ struct EditorView: View {
     @State private var share: ShareFile?
     @State private var error: String?
     @State private var confirmClear = false
+    @State private var renaming = false
+    @State private var newTitle = ""
 
     init(library: Library, notebook: Notebook, page: Int?) {
         _model = State(initialValue: EditorModel(library: library, notebook: notebook, page: page))
@@ -37,6 +40,9 @@ struct EditorView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 ErrorBanner(error: $error).padding(12).frame(maxHeight: .infinity, alignment: .top)
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ToolStrip(model: model, onPhoto: { showPhotos = true })
             }
             .animation(.easeOut(duration: 0.18), value: model.selected?.id)
             .background(Theme.desk)
@@ -69,31 +75,53 @@ struct EditorView: View {
         .confirmationDialog("Cancellare tutto l'inchiostro di questa pagina?", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("Cancella inchiostro", role: .destructive) { model.canvas.clearInk() }
         }
-        .onChange(of: phase) { _, p in if p != .active { model.canvas.saveNow() } }
-        .onDisappear { model.close() }
+        .alert("Rinomina quaderno", isPresented: $renaming) {
+            TextField("Titolo", text: $newTitle)
+            Button("Annulla", role: .cancel) {}
+            Button("Salva") { model.rename(newTitle) }
+        }
+        .onChange(of: phase) { _, p in
+            if p != .active { model.canvas.saveNow() }
+            if p == .background { backup.backupIfAuto(model.library) }
+        }
+        .onDisappear {
+            model.close()
+            backup.scheduleAuto(model.library)
+        }
         .preferredColorScheme(.dark)
     }
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
+        ToolbarItemGroup(placement: .topBarLeading) {
             Button {
                 model.close()
                 dismiss()
             } label: {
-                Image(systemName: "chevron.backward")
+                Image(systemName: "chevron.backward").fontWeight(.semibold)
             }
+            .accessibilityLabel("Indietro")
+            Button { showPages = true } label: { Image(systemName: "square.grid.2x2") }
+                .accessibilityLabel("Tutte le pagine")
         }
         ToolbarItem(placement: .principal) {
-            HStack(spacing: 14) {
+            HStack(spacing: 10) {
                 Button { model.previous() } label: { Image(systemName: "chevron.left") }
                     .disabled(model.pageIndex == 0)
-                Button { showPages = true } label: {
+                Menu {
+                    Button { newTitle = model.notebook.title; renaming = true } label: { Label("Rinomina", systemImage: "pencil") }
+                    Button { showPages = true } label: { Label("Tutte le pagine", systemImage: "square.grid.2x2") }
+                } label: {
                     VStack(spacing: 0) {
-                        Text(model.notebook.title).font(.caption.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1)
-                        Text("\(model.pageIndex + 1) / \(model.notebook.pages.count)").font(.caption2.monospacedDigit()).foregroundStyle(Theme.sub)
+                        HStack(spacing: 3) {
+                            Text(model.notebook.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundStyle(Theme.text)
+                        Text("Pagina \(model.pageIndex + 1) di \(model.notebook.pages.count)")
+                            .font(.caption2.monospacedDigit()).foregroundStyle(Theme.sub)
                     }
-                    .frame(maxWidth: 160)
+                    .frame(maxWidth: 200)
                 }
                 Button { model.next() } label: {
                     Image(systemName: model.pageIndex + 1 < model.notebook.pages.count ? "chevron.right" : "plus")
@@ -103,18 +131,25 @@ struct EditorView: View {
         ToolbarItemGroup(placement: .topBarTrailing) {
             Button { model.canvas.undo() } label: { Image(systemName: "arrow.uturn.backward") }
                 .disabled(!model.canUndo)
+                .accessibilityLabel("Annulla")
             Button { model.canvas.redo() } label: { Image(systemName: "arrow.uturn.forward") }
                 .disabled(!model.canRedo)
-            Button { model.setDrawMode(!model.drawMode) } label: {
-                Image(systemName: model.drawMode ? "pencil.tip.crop.circle.fill" : "hand.point.up.left.fill")
-            }
-            .accessibilityLabel(model.drawMode ? "Scrittura" : "Sposta testi e foto")
+                .accessibilityLabel("Ripeti")
             Menu {
-                Section("Aggiungi") {
-                    Button { model.addText() } label: { Label("Testo", systemImage: "textformat") }
-                    Button { showPhotos = true } label: { Label("Foto", systemImage: "photo") }
-                    Button { model.addPage(after: model.pageIndex, template: nil) } label: { Label("Pagina dopo questa", systemImage: "doc.badge.plus") }
-                    Button { showPDFPicker = true } label: { Label("Pagine da un PDF", systemImage: "doc.richtext") }
+                ForEach(PageTemplate.allCases) { t in
+                    Button(t.label) { model.addPage(after: model.pageIndex, template: t) }
+                }
+            } label: {
+                Image(systemName: "doc.badge.plus")
+            } primaryAction: {
+                model.addPage(after: model.pageIndex, template: nil)
+            }
+            .accessibilityLabel("Nuova pagina")
+            Menu {
+                Section {
+                    Toggle(isOn: Binding(get: { model.fingerDraws }, set: { model.setFingerDraws($0) })) {
+                        Label("Scrivi anche col dito", systemImage: "hand.draw")
+                    }
                 }
                 Section("Pagina") {
                     Menu {
@@ -135,7 +170,7 @@ struct EditorView: View {
                             }
                         }
                     } label: { Label("Carta", systemImage: "paintpalette") }
-                    Button { showPages = true } label: { Label("Tutte le pagine", systemImage: "square.grid.2x2") }
+                    Button { showPDFPicker = true } label: { Label("Aggiungi pagine da un PDF", systemImage: "doc.richtext") }
                     Button(role: .destructive) { confirmClear = true } label: { Label("Cancella inchiostro", systemImage: "eraser") }
                 }
                 Section("Esporta") {

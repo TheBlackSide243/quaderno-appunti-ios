@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct AppuntiApp: App {
     @State private var library = Library()
+    @State private var backup = CloudBackup()
 
     init() {
         let nav = UINavigationBarAppearance()
@@ -20,6 +21,7 @@ struct AppuntiApp: App {
         WindowGroup {
             LibraryView()
                 .environment(library)
+                .environment(backup)
                 .tint(Theme.accent)
                 .preferredColorScheme(.dark)
         }

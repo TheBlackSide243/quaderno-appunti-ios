@@ -159,10 +159,11 @@ final class Library {
     // MARK: Notebooks
 
     @discardableResult
-    func create(title: String, cover: Int, template: PageTemplate, paper: Paper, format: PageFormat, folder: UUID?) -> Notebook {
+    func create(title: String, cover: Int?, style: CoverStyle, template: PageTemplate, paper: Paper, format: PageFormat, folder: UUID?) -> Notebook {
         let name = title.trimmingCharacters(in: .whitespaces)
-        let nb = Notebook(title: name.isEmpty ? "Senza titolo" : name, cover: cover, paper: paper, folderID: folder,
+        var nb = Notebook(title: name.isEmpty ? "Senza titolo" : name, cover: cover, paper: paper, folderID: folder,
                           pages: [PageInfo(template: template, size: format.size)])
+        nb.coverStyle = style
         save(nb)
         refreshThumb(nb.id)
         return nb
@@ -241,6 +242,56 @@ final class Library {
         Indexer.shared.indexPDF(nb)
         return nb
     }
+
+    /// A new notebook with one page per picture, each picture filling its page.
+    func importImages(_ images: [UIImage], title: String, folder: UUID?) -> Notebook? {
+        guard !images.isEmpty else { return nil }
+        var nb = Notebook(title: title, cover: nil, folderID: folder, pages: [])
+        Store.ensureDirs(nb.id)
+        for img in images {
+            guard let (name, px) = Store.saveImage(img, nb.id), px.width > 0 else { continue }
+            let w: CGFloat = 595
+            let h = (w * px.height / px.width).rounded()
+            let page = PageInfo(template: .blank, size: CGSize(width: w, height: h))
+            var item = PageItem(kind: .image, x: 0, y: 0, w: Double(w), h: Double(h))
+            item.image = name
+            Store.saveItems([item], nb.id, page.id)
+            nb.pages.append(page)
+        }
+        guard !nb.pages.isEmpty else {
+            try? FileManager.default.removeItem(at: Store.dir(nb.id))
+            error = "Non riesco a leggere le immagini."
+            return nil
+        }
+        save(nb)
+        refreshThumb(nb.id)
+        return nb
+    }
+
+    func setCoverStyle(_ id: UUID, _ style: CoverStyle) {
+        guard var nb = notebook(id) else { return }
+        nb.coverStyle = style
+        if nb.cover == nil { nb.cover = 0 }
+        save(nb, touch: false)
+    }
+
+    /// Notebooks of a folder (nil = not in any folder), in the chosen order.
+    func notebooks(in folder: UUID?, order: SortOrder, favoritesOnly: Bool = false) -> [Notebook] {
+        let known = Set(folders.map(\.id))
+        var list = notebooks.filter { nb in
+            if favoritesOnly { return nb.favorite }
+            if let f = folder { return nb.folderID == f }
+            return nb.folderID == nil || !known.contains(nb.folderID!)
+        }
+        switch order {
+        case .date: list.sort { $0.modified > $1.modified }
+        case .name: list.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        case .kind: list.sort { ($0.hasPDF ? 1 : 0, $0.title.lowercased()) < ($1.hasPDF ? 1 : 0, $1.title.lowercased()) }
+        }
+        return list
+    }
+
+    func count(in folder: UUID) -> Int { notebooks.filter { $0.folderID == folder }.count }
 
     func rename(_ id: UUID, to title: String) {
         guard var nb = notebook(id) else { return }

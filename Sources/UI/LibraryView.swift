@@ -1,110 +1,163 @@
+import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The notebook shelf: folders on top, notebooks in a grid.
+/// Things any shelf can ask the root to do.
+@MainActor
+@Observable
+final class Router {
+    var open: OpenRequest?
+    var showSearch = false
+    var showSettings = false
+    var showNew = false
+}
+
+/// The notebook shelf: the root, and one level of folders pushed on top.
 struct LibraryView: View {
     @Environment(Library.self) private var library
+    @Environment(CloudBackup.self) private var backup
+    @Environment(\.scenePhase) private var phase
+    @State private var router = Router()
+
+    var body: some View {
+        NavigationStack {
+            ShelfView(folder: nil)
+                .navigationDestination(for: UUID.self) { ShelfView(folder: $0) }
+        }
+        .environment(router)
+        .fullScreenCover(item: $router.open) { req in
+            if let nb = library.notebook(req.notebookID) {
+                EditorView(library: library, notebook: nb, page: req.page)
+                    .environment(library)
+                    .environment(backup)
+            }
+        }
+        .sheet(isPresented: $router.showSearch) {
+            SearchView(initialQuery: Demo.searchQuery) { req in
+                router.showSearch = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { router.open = req }
+            }
+            .environment(library)
+        }
+        .sheet(isPresented: $router.showSettings) { SettingsView().environment(library).environment(backup) }
+        .sheet(isPresented: $router.showNew) {
+            NewNotebookView(folder: nil) { nb in router.open = OpenRequest(notebookID: nb.id) }
+                .environment(library)
+        }
+        .onOpenURL { url in
+            guard url.pathExtension.lowercased() == "pdf" else { return }
+            if let nb = library.importPDF(url, folder: nil) { router.open = OpenRequest(notebookID: nb.id) }
+            try? FileManager.default.removeItem(at: url)
+        }
+        .onChange(of: phase) { _, p in if p == .background { backup.backupIfAuto(library) } }
+        .task {
+            Demo.seedIfNeeded(library)
+            Indexer.shared.catchUp(library.notebooks)
+            await Demo.route(library: library, router: router)
+        }
+    }
+}
+
+/// One shelf: the folders (at the root) and the notebooks, in a grid or a list.
+struct ShelfView: View {
+    let folder: UUID?
+    @Environment(Library.self) private var library
+    @Environment(Router.self) private var router
     @Environment(\.horizontalSizeClass) private var hSize
 
-    /// nil = all, `favoritesID` = favourites, otherwise a folder.
-    @State private var folder: UUID?
-    @State private var open: OpenRequest?
+    @AppStorage("shelf.sort") private var sortRaw = SortOrder.date.rawValue
+    @AppStorage("shelf.list") private var listMode = false
+    @State private var favoritesOnly = false
     @State private var showNew = false
     @State private var showImport = false
-    @State private var showSearch = false
+    @State private var showPhotos = false
+    @State private var photoItems: [PhotosPickerItem] = []
     @State private var renaming: Notebook?
     @State private var newName = ""
     @State private var askFolder = false
     @State private var folderName = ""
     @State private var renamingFolder: Folder?
     @State private var confirmDelete: Notebook?
+    @State private var confirmDeleteFolder: Folder?
     @State private var share: ShareFile?
+    @State private var busy = false
 
-    static let favoritesID = UUID(uuidString: "00000000-0000-0000-0000-0000000000F1")!
+    private var sort: SortOrder { SortOrder(rawValue: sortRaw) ?? .date }
+    private var regular: Bool { hSize == .regular }
+
+    private var notebooks: [Notebook] { library.notebooks(in: folder, order: sort, favoritesOnly: favoritesOnly) }
+
+    private var folders: [Folder] {
+        guard folder == nil, !favoritesOnly else { return [] }
+        return sort == .date ? library.folders : library.folders.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private var title: String {
+        if favoritesOnly { return "Preferiti" }
+        if let folder { return library.folders.first { $0.id == folder }?.name ?? "Cartella" }
+        return "Documenti"
+    }
 
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: hSize == .regular ? 170 : 104, maximum: 240), spacing: hSize == .regular ? 26 : 16)]
+        [GridItem(.adaptive(minimum: regular ? 150 : 100, maximum: 210), spacing: regular ? 34 : 18, alignment: .top)]
     }
-
-    private var shown: [Notebook] {
-        switch folder {
-        case nil: library.notebooks
-        case Self.favoritesID: library.notebooks.filter(\.favorite)
-        case let id?: library.notebooks.filter { $0.folderID == id }
-        }
-    }
-
-    private var folderForNew: UUID? { folder == Self.favoritesID ? nil : folder }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    ErrorBanner(error: Binding(get: { library.error }, set: { library.error = $0 }))
-                    folderBar
-                    if shown.isEmpty {
-                        empty
-                    } else {
-                        LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
-                            ForEach(shown) { nb in
-                                Button { open = OpenRequest(notebookID: nb.id) } label: {
-                                    NotebookCard(notebook: nb, version: library.thumbVersion[nb.id, default: 0])
-                                }
-                                .buttonStyle(.plain)
-                                .contextMenu { menu(nb) }
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, hSize == .regular ? 28 : 16)
-                .padding(.vertical, 12)
-            }
-            .navigationTitle(title)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "pencil.and.scribble").foregroundStyle(Theme.accent)
-                        Text("APPUNTI").font(.headline.weight(.heavy)).foregroundStyle(Theme.accent).tracking(1)
-                    }
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }
-                    Menu {
-                        Button { showNew = true } label: { Label("Nuovo quaderno", systemImage: "book.closed") }
-                        Button { showImport = true } label: { Label("Importa PDF", systemImage: "doc.richtext") }
-                        Button { folderName = ""; askFolder = true } label: { Label("Nuova cartella", systemImage: "folder.badge.plus") }
-                    } label: {
-                        Image(systemName: "plus.circle.fill").font(.title3)
-                    }
+        ScrollView {
+            VStack(spacing: 22) {
+                ErrorBanner(error: Binding(get: { library.error }, set: { library.error = $0 }))
+                controls
+                if listMode { list } else { grid }
+                if notebooks.isEmpty && folders.isEmpty && (folder != nil || favoritesOnly) {
+                    Text(favoritesOnly ? "Nessun preferito: tieni premuto un quaderno o usa il suo menu per aggiungerlo."
+                                       : "Questa cartella è vuota. Crea un quaderno qui o spostane uno dal suo menu.")
+                        .font(.subheadline).foregroundStyle(Theme.sub).multilineTextAlignment(.center)
+                        .padding(.top, 20)
                 }
             }
-            .screen()
+            .padding(.horizontal, regular ? 34 : 16)
+            .padding(.bottom, 30)
         }
+        .overlay { if busy { ProgressView().controlSize(.large).padding(30).background(Theme.panel, in: RoundedRectangle(cornerRadius: 16)) } }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { router.showSearch = true } label: { Image(systemName: "magnifyingglass") }
+                    .accessibilityLabel("Cerca")
+                if folder == nil {
+                    Button { router.showSettings = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("Impostazioni")
+                }
+            }
+        }
+        .screen()
         .sheet(isPresented: $showNew) {
-            NewNotebookView(folder: folderForNew) { nb in open = OpenRequest(notebookID: nb.id) }
-        }
-        .sheet(isPresented: $showSearch) {
-            SearchView { req in
-                showSearch = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { open = req }
-            }
+            NewNotebookView(folder: folder) { nb in router.open = OpenRequest(notebookID: nb.id) }
+                .environment(library)
         }
         .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
-        .fullScreenCover(item: $open) { req in
-            if let nb = library.notebook(req.notebookID) {
-                EditorView(library: library, notebook: nb, page: req.page)
-            }
-        }
         .fileImporter(isPresented: $showImport, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { result in
             guard case let .success(urls) = result else { return }
             var last: Notebook?
-            for url in urls { if let nb = library.importPDF(url, folder: folderForNew) { last = nb } }
-            if urls.count == 1, let last { open = OpenRequest(notebookID: last.id) }
+            for url in urls { if let nb = library.importPDF(url, folder: folder) { last = nb } }
+            if urls.count == 1, let last { router.open = OpenRequest(notebookID: last.id) }
         }
-        .onOpenURL { url in
-            guard url.pathExtension.lowercased() == "pdf" else { return }
-            if let nb = library.importPDF(url, folder: nil) { open = OpenRequest(notebookID: nb.id) }
-            try? FileManager.default.removeItem(at: url)
+        .photosPicker(isPresented: $showPhotos, selection: $photoItems, maxSelectionCount: 50, matching: .images)
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
+            photoItems = []
+            busy = true
+            Task {
+                var images: [UIImage] = []
+                for item in items {
+                    if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) { images.append(img) }
+                }
+                let title = "Foto del " + Date().formatted(.dateTime.day().month(.abbreviated))
+                let nb = library.importImages(images, title: title, folder: folder)
+                busy = false
+                if let nb { router.open = OpenRequest(notebookID: nb.id) }
+            }
         }
         .alert("Rinomina quaderno", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Titolo", text: $newName)
@@ -127,70 +180,192 @@ struct LibraryView: View {
                 confirmDelete = nil
             }
         }
-        .task { Indexer.shared.catchUp(library.notebooks) }
-    }
-
-    private var title: String {
-        switch folder {
-        case nil: "Tutti i quaderni"
-        case Self.favoritesID: "Preferiti"
-        case let id?: library.folders.first { $0.id == id }?.name ?? "Cartella"
-        }
-    }
-
-    private var folderBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                Chip(title: "Tutti", icon: "books.vertical.fill", on: folder == nil) { folder = nil }
-                Chip(title: "Preferiti", icon: "star.fill", on: folder == Self.favoritesID) { folder = Self.favoritesID }
-                ForEach(library.folders) { f in
-                    Chip(title: f.name, icon: "folder.fill", on: folder == f.id) { folder = f.id }
-                        .contextMenu {
-                            Button { renamingFolder = f; folderName = f.name; askFolder = true } label: { Label("Rinomina", systemImage: "pencil") }
-                            Button(role: .destructive) {
-                                if folder == f.id { folder = nil }
-                                library.deleteFolder(f.id)
-                            } label: { Label("Elimina cartella (i quaderni restano)", systemImage: "folder.badge.minus") }
-                        }
-                }
-                Button { renamingFolder = nil; folderName = ""; askFolder = true } label: {
-                    Image(systemName: "plus").font(.footnote.weight(.bold)).padding(9)
-                        .background(Theme.input, in: Circle())
-                        .overlay(Circle().stroke(Theme.line, lineWidth: 1))
-                }
+        .confirmationDialog("Eliminare la cartella «\(confirmDeleteFolder?.name ?? "")»? I quaderni dentro non vengono cancellati: tornano in Documenti.",
+                            isPresented: Binding(get: { confirmDeleteFolder != nil }, set: { if !$0 { confirmDeleteFolder = nil } }),
+                            titleVisibility: .visible) {
+            Button("Elimina cartella", role: .destructive) {
+                if let f = confirmDeleteFolder { library.deleteFolder(f.id) }
+                confirmDeleteFolder = nil
             }
         }
     }
 
-    private var empty: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "book.closed").font(.system(size: 44)).foregroundStyle(Theme.accent)
-            Text(folder == nil ? "Nessun quaderno" : "Qui non c'è ancora niente").font(.headline).foregroundStyle(Theme.text)
-            Text("Crea un quaderno per scrivere a mano o importa un PDF da annotare.")
-                .font(.subheadline).foregroundStyle(Theme.sub).multilineTextAlignment(.center)
-            HStack(spacing: 10) {
-                Button { showNew = true } label: { Label("Nuovo quaderno", systemImage: "plus") }.buttonStyle(SecondaryButtonStyle())
-                Button { showImport = true } label: { Label("Importa PDF", systemImage: "doc.richtext") }.buttonStyle(SecondaryButtonStyle())
+    // MARK: Pieces
+
+    private var controls: some View {
+        HStack(spacing: 12) {
+            if regular { Spacer(minLength: 0) }
+            Picker("Ordina", selection: $sortRaw) {
+                ForEach(SortOrder.allCases) { Text($0.label).tag($0.rawValue) }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 300)
+            Spacer(minLength: 0)
+            Button { withAnimation { favoritesOnly.toggle() } } label: {
+                Image(systemName: favoritesOnly ? "star.fill" : "star")
+            }
+            .foregroundStyle(favoritesOnly ? Theme.accent : Theme.sub)
+            .accessibilityLabel("Solo preferiti")
+            Button { withAnimation { listMode.toggle() } } label: {
+                Image(systemName: listMode ? "square.grid.2x2" : "list.bullet")
+            }
+            .foregroundStyle(Theme.sub)
+            .accessibilityLabel(listMode ? "Griglia" : "Elenco")
+        }
+        .font(.title3)
+    }
+
+    private var newMenu: some View {
+        Group {
+            Button { showNew = true } label: { Label("Quaderno", systemImage: "book.closed") }
+            Button { showImport = true } label: { Label("Importa PDF", systemImage: "doc.richtext") }
+            Button { showPhotos = true } label: { Label("Da foto", systemImage: "photo.on.rectangle") }
+            if folder == nil {
+                Button { renamingFolder = nil; folderName = ""; askFolder = true } label: { Label("Cartella", systemImage: "folder.badge.plus") }
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
+    }
+
+    private var grid: some View {
+        LazyVGrid(columns: columns, alignment: .center, spacing: regular ? 34 : 24) {
+            if !favoritesOnly {
+                VStack(spacing: 8) {
+                    Menu { newMenu } label: {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Theme.accent.opacity(0.8), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+                            .background(Theme.accent.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .aspectRatio(0.76, contentMode: .fit)
+                            .overlay(Image(systemName: "plus").font(.system(size: 34, weight: .light)).foregroundStyle(Theme.accent))
+                    }
+                    Text("Nuovo…").font(.subheadline.weight(.medium)).foregroundStyle(Theme.accent)
+                    Text(" ").font(.caption)
+                }
+            }
+            ForEach(folders) { f in
+                VStack(spacing: 8) {
+                    NavigationLink(value: f.id) { FolderArt(count: library.count(in: f.id)) }
+                        .buttonStyle(.plain)
+                        .contextMenu { folderMenu(f) }
+                    caption(f.name) { folderMenu(f) }
+                    Text(library.count(in: f.id) == 1 ? "1 quaderno" : "\(library.count(in: f.id)) quaderni")
+                        .font(.caption).foregroundStyle(Theme.sub)
+                }
+            }
+            ForEach(notebooks) { nb in
+                VStack(spacing: 8) {
+                    Button { router.open = OpenRequest(notebookID: nb.id) } label: {
+                        NotebookCover(notebook: nb, version: library.thumbVersion[nb.id, default: 0])
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { menu(nb) }
+                    caption(nb.title) { menu(nb) }
+                    Text(nb.modified.formatted(.dateTime.day().month(.abbreviated).year().hour().minute()))
+                        .font(.caption).foregroundStyle(Theme.sub).lineLimit(1)
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private var list: some View {
+        VStack(spacing: 0) {
+            if !favoritesOnly {
+                Menu { newMenu } label: {
+                    HStack(spacing: 14) {
+                        RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
+                            .frame(width: 40, height: 52)
+                            .overlay(Image(systemName: "plus").foregroundStyle(Theme.accent))
+                        Text("Nuovo…").font(.body.weight(.medium)).foregroundStyle(Theme.accent)
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                Divider().overlay(Theme.line)
+            }
+            ForEach(folders) { f in
+                NavigationLink(value: f.id) {
+                    row(art: AnyView(FolderArt(count: library.count(in: f.id))), title: f.name,
+                        subtitle: "\(library.count(in: f.id)) quaderni") { folderMenu(f) }
+                }
+                .buttonStyle(.plain)
+                .contextMenu { folderMenu(f) }
+                Divider().overlay(Theme.line)
+            }
+            ForEach(notebooks) { nb in
+                Button { router.open = OpenRequest(notebookID: nb.id) } label: {
+                    row(art: AnyView(NotebookCover(notebook: nb, version: library.thumbVersion[nb.id, default: 0])), title: nb.title,
+                        subtitle: "\(nb.pages.count) pag. · " + nb.modified.formatted(.dateTime.day().month(.abbreviated).year().hour().minute())) { menu(nb) }
+                }
+                .buttonStyle(.plain)
+                .contextMenu { menu(nb) }
+                Divider().overlay(Theme.line)
+            }
+        }
+        .padding(.horizontal, 14)
+        .background(Theme.panel, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.line, lineWidth: 1))
+    }
+
+    private func row<M: View>(art: AnyView, title: String, subtitle: String, @ViewBuilder menu: @escaping () -> M) -> some View {
+        HStack(spacing: 14) {
+            art.frame(width: 40, height: 52)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.body.weight(.medium)).foregroundStyle(Theme.text).lineLimit(1)
+                Text(subtitle).font(.caption).foregroundStyle(Theme.sub).lineLimit(1)
+            }
+            Spacer()
+            Menu { menu() } label: {
+                Image(systemName: "ellipsis.circle").font(.title3).foregroundStyle(Theme.sub).frame(width: 40, height: 40)
+            }
+        }
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+    }
+
+    /// The title under a tile, in the accent colour, opening the item's menu.
+    private func caption<M: View>(_ text: String, @ViewBuilder menu: @escaping () -> M) -> some View {
+        Menu { menu() } label: {
+            HStack(spacing: 3) {
+                Text(text).font(.subheadline.weight(.medium)).lineLimit(1)
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
+            }
+            .foregroundStyle(Theme.accent)
+        }
+    }
+
+    @ViewBuilder
+    private func folderMenu(_ f: Folder) -> some View {
+        Button { renamingFolder = f; folderName = f.name; askFolder = true } label: { Label("Rinomina", systemImage: "pencil") }
+        Button(role: .destructive) { confirmDeleteFolder = f } label: { Label("Elimina cartella", systemImage: "folder.badge.minus") }
     }
 
     @ViewBuilder
     private func menu(_ nb: Notebook) -> some View {
+        Button { router.open = OpenRequest(notebookID: nb.id) } label: { Label("Apri", systemImage: "book") }
         Button { library.toggleFavorite(nb.id) } label: {
             Label(nb.favorite ? "Togli dai preferiti" : "Aggiungi ai preferiti", systemImage: nb.favorite ? "star.slash" : "star")
         }
         Button { newName = nb.title; renaming = nb } label: { Label("Rinomina", systemImage: "pencil") }
         Menu {
             Button { library.setCover(nb.id, nil) } label: { Label("Prima pagina", systemImage: "doc") }
-            ForEach(Covers.colors.indices, id: \.self) { i in
-                Button { library.setCover(nb.id, i) } label: { Text(Covers.names[i]) }
+            Menu("Stile") {
+                ForEach(CoverStyle.allCases) { st in
+                    Button { library.setCoverStyle(nb.id, st) } label: {
+                        if nb.cover != nil && (nb.coverStyle ?? .plain) == st { Label(st.label, systemImage: "checkmark") } else { Text(st.label) }
+                    }
+                }
+            }
+            Menu("Colore") {
+                ForEach(Covers.colors.indices, id: \.self) { i in
+                    Button { library.setCover(nb.id, i) } label: {
+                        if nb.cover == i { Label(Covers.names[i], systemImage: "checkmark") } else { Text(Covers.names[i]) }
+                    }
+                }
             }
         } label: { Label("Copertina", systemImage: "paintbrush") }
         Menu {
-            Button { library.move(nb.id, to: nil) } label: { Label("Nessuna cartella", systemImage: "tray") }
+            Button { library.move(nb.id, to: nil) } label: { Label("Documenti", systemImage: "tray") }
             ForEach(library.folders) { f in
                 Button { library.move(nb.id, to: f.id) } label: {
                     if nb.folderID == f.id { Label(f.name, systemImage: "checkmark") } else { Text(f.name) }
@@ -203,83 +378,5 @@ struct LibraryView: View {
         } label: { Label("Esporta PDF", systemImage: "square.and.arrow.up") }
         Divider()
         Button(role: .destructive) { confirmDelete = nb } label: { Label("Elimina", systemImage: "trash") }
-    }
-}
-
-struct Chip: View {
-    let title: String
-    let icon: String
-    let on: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 13)
-                .padding(.vertical, 8)
-                .background(on ? Theme.accent : Theme.input, in: Capsule())
-                .overlay(Capsule().stroke(on ? Theme.accent : Theme.line, lineWidth: 1))
-                .foregroundStyle(on ? Theme.bg : Theme.text)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-/// A notebook on the shelf: a coloured cover with its title, or its first page.
-struct NotebookCard: View {
-    let notebook: Notebook
-    var version = 0
-    @State private var thumb: UIImage?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            cover
-                .aspectRatio(0.74, contentMode: .fit)
-                .shadow(color: .black.opacity(0.45), radius: 6, y: 3)
-            HStack(spacing: 4) {
-                if notebook.favorite { Image(systemName: "star.fill").font(.caption2).foregroundStyle(Theme.accent) }
-                Text(notebook.title).font(.footnote.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(2)
-            }
-            Text("\(notebook.pages.count) pag. · \(notebook.modified.formatted(.relative(presentation: .named)))")
-                .font(.caption2).foregroundStyle(Theme.sub).lineLimit(1)
-        }
-        .task(id: version) {
-            let id = notebook.id
-            thumb = await Task.detached { UIImage(contentsOfFile: Store.thumb(id).path) }.value
-        }
-    }
-
-    @ViewBuilder
-    private var cover: some View {
-        if let c = notebook.cover {
-            let color = Covers.color(c)
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 10, style: .continuous).fill(color.gradient)
-                Rectangle().fill(.black.opacity(0.22)).frame(width: 12)
-                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(notebook.title)
-                        .font(.system(.subheadline, design: .serif).weight(.bold))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
-                        .lineLimit(3)
-                    Spacer()
-                    if notebook.hasPDF { Image(systemName: "doc.richtext").font(.caption).foregroundStyle(.white.opacity(0.8)) }
-                }
-                .padding(.leading, 22).padding(.trailing, 10).padding(.vertical, 14)
-            }
-        } else {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(uiColor: notebook.paper.uiColor))
-                if let thumb {
-                    Image(uiImage: thumb).resizable().scaledToFill()
-                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                        .clipped()
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.line, lineWidth: 1))
-        }
     }
 }

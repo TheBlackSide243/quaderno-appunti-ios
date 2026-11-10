@@ -4,9 +4,8 @@ import UIKit
 /// The page being edited: a zoomable PencilKit canvas with the paper drawn behind the ink and the
 /// text boxes and pictures in a layer above it.
 @MainActor
-final class PageCanvasView: UIView, PKCanvasViewDelegate, PKToolPickerObserver {
+final class PageCanvasView: UIView, PKCanvasViewDelegate {
     let canvas = PKCanvasView()
-    let toolPicker = PKToolPicker()
     private let paper = UIImageView()
     let items = ItemsLayer()
 
@@ -63,11 +62,6 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, PKToolPickerObserver {
         tap.cancelsTouchesInView = false
         canvas.addGestureRecognizer(tap)
 
-        toolPicker.addObserver(canvas)
-        toolPicker.addObserver(self)
-        toolPicker.colorUserInterfaceStyle = .light
-        toolPicker.overrideUserInterfaceStyle = .dark
-        toolPicker.showsDrawingPolicyControls = true
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -176,7 +170,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, PKToolPickerObserver {
         items.layer.position = .zero
         let dx = max(0, (bounds.width - size.width) / 2)
         let dy = max(12, (bounds.height - size.height) / 2)
-        canvas.contentInset = UIEdgeInsets(top: dy, left: dx, bottom: max(12, dy) + 90, right: dx)
+        canvas.contentInset = UIEdgeInsets(top: dy, left: dx, bottom: max(24, dy), right: dx)
     }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) { updateContent() }
@@ -199,14 +193,21 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, PKToolPickerObserver {
         items.isUserInteractionEnabled = !drawMode
         if !drawMode { items.select(nil) }
         guard window != nil else { return }
-        if drawMode {
-            items.endEditing(true)
-            toolPicker.setVisible(true, forFirstResponder: canvas)
-            canvas.becomeFirstResponder()
-        } else {
-            toolPicker.setVisible(false, forFirstResponder: canvas)
-            canvas.resignFirstResponder()
-        }
+        if drawMode { items.endEditing(true) }
+    }
+
+    /// The pen, marker, eraser or lasso chosen in the toolbar.
+    func setTool(_ tool: PKTool) { canvas.tool = tool }
+
+    /// With false, only the Apple Pencil draws and fingers scroll the page.
+    var fingerDraws: Bool {
+        get { canvas.drawingPolicy == .anyInput }
+        set { canvas.drawingPolicy = newValue ? .anyInput : .pencilOnly }
+    }
+
+    var rulerActive: Bool {
+        get { canvas.isRulerActive }
+        set { canvas.isRulerActive = newValue }
     }
 
     @objc private func tappedEmpty(_ g: UITapGestureRecognizer) {

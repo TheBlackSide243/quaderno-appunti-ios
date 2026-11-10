@@ -6,7 +6,12 @@ struct SearchView: View {
     @Environment(\.dismiss) private var dismiss
     let onOpen: (OpenRequest) -> Void
 
-    @State private var query = ""
+    @State private var query: String
+
+    init(initialQuery: String = "", onOpen: @escaping (OpenRequest) -> Void) {
+        self.onOpen = onOpen
+        _query = State(initialValue: initialQuery)
+    }
     @State private var hits: [SearchHit] = []
     @State private var searching = false
     @FocusState private var focused: Bool
