@@ -1,0 +1,56 @@
+# Crash hunt: UI tests that change tool many times and use the lasso, on an iPhone and on the
+# iPhone Duo simulator. Crash reports and the test results are kept as the "crashtest" artifact.
+name: Crash test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  uitests:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_[0-9]*.app 2>/dev/null | grep -vi 'beta' | sort -V | tail -1)
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+
+      - name: Tools
+        run: brew install xcodegen
+
+      - name: Xcode project
+        run: xcodegen generate
+
+      - name: UI tests
+        run: |
+          set -o pipefail
+          mkdir -p out
+          touch out/.start
+          for dev in "iPhone 18 Pro" "iPhone Duo"; do
+            echo "== $dev"
+            xcodebuild test -project Appunti.xcodeproj -scheme Appunti \
+              -destination "platform=iOS Simulator,name=$dev" \
+              -resultBundlePath "out/$dev.xcresult" CODE_SIGNING_ALLOWED=NO 2>&1 \
+              | tee -a out/test.log | grep -E "Test Case|error:|crash|Crash|TEST (SUCCEEDED|FAILED)|\*\* " || true
+          done
+
+      - name: Crash reports
+        if: always()
+        run: |
+          mkdir -p out/crashes
+          find "$HOME/Library/Logs/DiagnosticReports" -iname 'Appunti*' -newer out/.start -exec cp {} out/crashes/ \; 2>/dev/null || true
+          ls -la out/crashes
+          for f in out/crashes/*; do [ -f "$f" ] && head -c 6000 "$f" && echo; done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: crashtest
+          path: out
+          retention-days: 14
