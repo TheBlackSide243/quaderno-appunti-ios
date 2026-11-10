@@ -10,6 +10,7 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 <p>
   <img src="docs/screenshots/iphone-library.jpg" width="200" alt="Libreria su iPhone">
   <img src="docs/screenshots/iphone-editor.jpg" width="200" alt="Quaderno a righe con la barra strumenti">
+  <img src="docs/screenshots/iphone-shapes.jpg" width="200" alt="Strumento Forme">
   <img src="docs/screenshots/iphone-new.jpg" width="200" alt="Nuovo quaderno">
   <img src="docs/screenshots/iphone-search.jpg" width="200" alt="Ricerca negli appunti">
   <img src="docs/screenshots/iphone-intro.jpg" width="200" alt="Introduzione al primo avvio">
@@ -23,6 +24,8 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 | Libreria: cartelle, copertine, prima pagina come copertina | Scrittura, evidenziatore, testo e disegni |
 | <img src="docs/screenshots/ipad-pdf.jpg" alt="PDF annotato"> | <img src="docs/screenshots/ipad-math.jpg" alt="Grafico su carta a quadretti"> |
 | PDF evidenziato e annotato | Carta a quadretti, grafico e area sotto la curva |
+| <img src="docs/screenshots/ipad-shapes.jpg" alt="Forme: rettangoli, ellissi, frecce e linee"> | <img src="docs/screenshots/ipad-ocr.jpg" alt="Testo riconosciuto di una pagina"> |
+| Forme: rettangoli, ellissi, frecce e linee | Testo riconosciuto della pagina, da copiare |
 | <img src="docs/screenshots/ipad-new.jpg" alt="Nuovo quaderno su iPad"> | <img src="docs/screenshots/ipad-settings.jpg" alt="Impostazioni e iCloud Drive"> |
 | Nuovo quaderno: copertina, carta e modelli | Impostazioni: salvataggio su iCloud Drive |
 
