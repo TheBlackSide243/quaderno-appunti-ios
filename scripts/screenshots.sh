@@ -113,4 +113,7 @@ ONLY="${2:-}"
 if [ -z "$ONLY" ] || [ "$ONLY" = iphone ]; then shoot iphone '^iPhone \d+ Pro$' '^iPhone \d+$' 'iPhone'; fi
 if [ -z "$ONLY" ] || [ "$ONLY" = ipad ]; then shoot ipad 'iPad Pro 13' 'iPad Pro' 'iPad Air' 'iPad'; fi
 if [ -z "$ONLY" ] || [ "$ONLY" = duo ]; then duo_device; shoot duo 'Duo' 'Fold' 'Flip' 'iPhone Duo shots'; fi
-ls -la "$OUT"
+# Crash reports of the app from the simulators, if any.
+mkdir -p "$OUT/crashes"
+find "$HOME/Library/Logs/DiagnosticReports" -iname 'Appunti*' -newer "$APP" -exec cp {} "$OUT/crashes/" \; 2>/dev/null || true
+ls -la "$OUT" "$OUT/crashes"

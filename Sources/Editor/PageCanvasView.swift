@@ -169,7 +169,8 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         // Sharp enough for the current zoom, capped at ~24 Mpx.
         let screen = window?.screen.scale ?? 2
         let maxScale = sqrt(24_000_000 / (pg.size.width * pg.size.height))
-        let want = min(maxScale, max(2, canvas.zoomScale * screen))
+        let zoom = canvas.zoomScale.isFinite && canvas.zoomScale > 0 ? canvas.zoomScale : 1
+        let want = min(maxScale, max(2, zoom * screen))
         guard want > paperScale * 1.15 || paperScale == 0 else { return }
         paperScale = want
         paper.image = PageRenderer.background(nb, pg, scale: want)
@@ -201,9 +202,12 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     override func layoutSubviews() {
         super.layoutSubviews()
         canvas.frame = bounds
-        guard let pg = page, bounds.width > 0 else { return }
+        // While the iPhone Duo folds or a window resizes the view can be momentarily very narrow:
+        // a zoom of zero or less would put NaN in the layer positions and end the app.
+        guard let pg = page, bounds.width > 40, bounds.height > 40, pg.size.width > 0, pg.size.height > 0 else { return }
         let margin: CGFloat = bounds.width > 600 ? 28 : 10
         let fit = (bounds.width - margin * 2) / pg.size.width
+        guard fit.isFinite, fit > 0 else { return }
         let refit = fittedWidth != bounds.width
         if refit {
             fittedWidth = bounds.width
@@ -231,6 +235,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     private func updateContent() {
         guard let pg = page else { return }
         let z = canvas.zoomScale
+        guard z.isFinite, z > 0 else { return }
         let size = CGSize(width: pg.size.width * z, height: pg.size.height * z)
         canvas.contentSize = size
         let t = CGAffineTransform(scaleX: z, y: z)
@@ -258,7 +263,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
 
     /// The point of the page at the middle of the screen.
     var visibleCenter: CGPoint {
-        let z = canvas.zoomScale
+        let z = canvas.zoomScale > 0 && canvas.zoomScale.isFinite ? canvas.zoomScale : 1
         let c = CGPoint(x: canvas.contentOffset.x + canvas.bounds.width / 2, y: canvas.contentOffset.y + canvas.bounds.height / 2)
         guard let pg = page else { return CGPoint(x: c.x / z, y: c.y / z) }
         return CGPoint(x: min(max(40, c.x / z), pg.size.width - 40), y: min(max(40, c.y / z), pg.size.height - 40))

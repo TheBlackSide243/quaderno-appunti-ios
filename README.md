@@ -29,6 +29,15 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 | <img src="docs/screenshots/ipad-new.jpg" alt="Nuovo quaderno su iPad"> | <img src="docs/screenshots/ipad-settings.jpg" alt="Impostazioni e iCloud Drive"> |
 | Nuovo quaderno: copertina, carta e modelli | Impostazioni: salvataggio su iCloud Drive |
 
+**iPhone Duo (chiuso)**
+
+<p>
+  <img src="docs/screenshots/duo-library.jpg" width="200" alt="Libreria sull'iPhone Duo chiuso">
+  <img src="docs/screenshots/duo-editor.jpg" width="200" alt="Quaderno sull'iPhone Duo chiuso">
+  <img src="docs/screenshots/duo-pdf.jpg" width="200" alt="PDF annotato sull'iPhone Duo chiuso">
+  <img src="docs/screenshots/duo-shapes.jpg" width="200" alt="Forme sull'iPhone Duo chiuso">
+</p>
+
 <sub>Schermate dal simulatore iOS con quaderni d'esempio (la scrittura a mano è finta).</sub>
 
 ## Cosa fa
