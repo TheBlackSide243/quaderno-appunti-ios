@@ -40,6 +40,10 @@ struct EditorView: View {
                         .padding(.bottom, 12)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+                else if hSize != .regular {
+                    PageNav(model: model)
+                        .padding(.bottom, 10)
+                }
                 ErrorBanner(error: $error).padding(12).frame(maxHeight: .infinity, alignment: .top)
             }
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -113,8 +117,10 @@ struct EditorView: View {
         }
         ToolbarItem(placement: .principal) {
             HStack(spacing: 10) {
-                Button { model.previous() } label: { Image(systemName: "chevron.left") }
-                    .disabled(model.pageIndex == 0)
+                if hSize == .regular {
+                    Button { model.previous() } label: { Image(systemName: "chevron.left") }
+                        .disabled(model.pageIndex == 0)
+                }
                 Menu {
                     Button { newTitle = model.notebook.title; renaming = true } label: { Label("Rinomina", systemImage: "pencil") }
                     Button { showPages = true } label: { Label("Tutte le pagine", systemImage: "square.grid.2x2") }
@@ -130,8 +136,10 @@ struct EditorView: View {
                     }
                     .frame(maxWidth: hSize == .regular ? 220 : 120)
                 }
-                Button { model.next() } label: {
-                    Image(systemName: model.pageIndex + 1 < model.notebook.pages.count ? "chevron.right" : "plus")
+                if hSize == .regular {
+                    Button { model.next() } label: {
+                        Image(systemName: model.pageIndex + 1 < model.notebook.pages.count ? "chevron.right" : "plus")
+                    }
                 }
             }
         }
@@ -205,6 +213,36 @@ struct EditorView: View {
         } catch {
             self.error = "Esportazione non riuscita: \(error.localizedDescription)"
         }
+    }
+}
+
+/// On iPhone the page arrows live at the bottom, where the thumb is, not in the crowded title bar.
+struct PageNav: View {
+    let model: EditorModel
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button { model.previous() } label: {
+                Image(systemName: "chevron.left").frame(width: 40, height: 36)
+            }
+            .disabled(model.pageIndex == 0)
+            .accessibilityLabel("Pagina precedente")
+            Text("\(model.pageIndex + 1) / \(model.notebook.pages.count)")
+                .font(.footnote.monospacedDigit().weight(.semibold))
+                .foregroundStyle(Theme.text)
+                .frame(minWidth: 44)
+            Button { model.next() } label: {
+                Image(systemName: model.pageIndex + 1 < model.notebook.pages.count ? "chevron.right" : "plus")
+                    .frame(width: 40, height: 36)
+            }
+            .accessibilityLabel(model.pageIndex + 1 < model.notebook.pages.count ? "Pagina successiva" : "Nuova pagina")
+        }
+        .font(.body.weight(.semibold))
+        .foregroundStyle(Theme.accent)
+        .padding(.horizontal, 6)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
+        .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
     }
 }
 

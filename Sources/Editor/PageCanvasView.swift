@@ -179,7 +179,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate {
         items.layer.position = .zero
         let dx = max(0, (bounds.width - size.width) / 2)
         let dy = max(12, (bounds.height - size.height) / 2)
-        canvas.contentInset = UIEdgeInsets(top: dy, left: dx, bottom: max(24, dy), right: dx)
+        canvas.contentInset = UIEdgeInsets(top: dy, left: dx, bottom: max(64, dy), right: dx)
     }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) { updateContent() }
