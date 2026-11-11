@@ -36,7 +36,7 @@ struct SearchView: View {
                     Text("Nessun risultato per «\(query)».").foregroundStyle(Theme.sub).listRowBackground(Theme.panel)
                 }
                 ForEach(groups, id: \.0) { id, list in
-                    Section(library.notebook(id)?.title ?? "Quaderno") {
+                    Section(library.notebook(id)?.title ?? String(localized: "Quaderno")) {
                         ForEach(list) { hit in
                             Button {
                                 onOpen(OpenRequest(notebookID: hit.notebookID, page: hit.pageIndex))
@@ -57,8 +57,8 @@ struct SearchView: View {
                 }
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
-                        prompt: scope == nil ? "Cerca negli appunti" : "Cerca in questo quaderno")
-            .navigationTitle(scope == nil ? "Cerca" : "Cerca nel quaderno")
+                        prompt: scope == nil ? String(localized: "Cerca negli appunti") : String(localized: "Cerca in questo quaderno"))
+            .navigationTitle(scope == nil ? String(localized: "Cerca") : String(localized: "Cerca nel quaderno"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Chiudi") { dismiss() } } }
             .screen()

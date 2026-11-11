@@ -107,7 +107,7 @@ struct PagesView: View {
     @ViewBuilder
     private func menu(_ i: Int, _ page: PageInfo) -> some View {
         Button { model.toggleBookmark(i) } label: {
-            Label(page.isBookmarked ? "Togli il segnalibro" : "Aggiungi un segnalibro", systemImage: page.isBookmarked ? "bookmark.slash" : "bookmark")
+            Label(page.isBookmarked ? String(localized: "Togli il segnalibro") : String(localized: "Aggiungi un segnalibro"), systemImage: page.isBookmarked ? "bookmark.slash" : "bookmark")
         }
         Button { model.duplicatePage(i) } label: { Label("Duplica", systemImage: "plus.square.on.square") }
         Menu {

@@ -13,10 +13,10 @@ struct ToolStrip: View {
                     toolButton(t.icon, label: t.label, on: model.tool == t) { model.select(t) }
                 }
                 separator
-                toolButton("textformat", label: "Testo", on: false) { model.addText() }
-                toolButton("photo", label: "Foto", on: false) { onPhoto() }
-                toolButton("ruler", label: "Righello", on: model.ruler) { model.toggleRuler() }
-                toolButton("waveform", label: "Registrazione audio", on: model.audio.panel || model.audio.recording) {
+                toolButton("textformat", label: String(localized: "Testo"), on: false) { model.addText() }
+                toolButton("photo", label: String(localized: "Foto"), on: false) { onPhoto() }
+                toolButton("ruler", label: String(localized: "Righello"), on: model.ruler) { model.toggleRuler() }
+                toolButton("waveform", label: String(localized: "Registrazione audio"), on: model.audio.panel || model.audio.recording) {
                     model.audio.panel.toggle()
                 }
                 if model.tool == .shape {
@@ -41,7 +41,7 @@ struct ToolStrip: View {
                     ForEach(model.tool.presets, id: \.self) { hex in
                         swatch(hex)
                     }
-                    ColorPicker("Colore", selection: Binding(
+                    ColorPicker(String(localized: "Colore"), selection: Binding(
                         get: { Color(uiColor: UIColor(hex: model.color(of: model.tool))) },
                         set: { model.setColor(UIColor($0).hexString) }
                     ), supportsOpacity: false)
@@ -91,7 +91,7 @@ struct ToolStrip: View {
             .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(on ? Theme.line : .clear, lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(eraser ? (w == 0 ? "Cancella tratto intero" : (i == 1 ? "Gomma piccola" : "Gomma grande")) : "Spessore \(i + 1)")
+        .accessibilityLabel(eraser ? (w == 0 ? String(localized: "Cancella tratto intero") : (i == 1 ? String(localized: "Gomma piccola") : String(localized: "Gomma grande"))) : String(localized: "Spessore \(i + 1)"))
     }
 
     private func swatch(_ hex: String) -> some View {

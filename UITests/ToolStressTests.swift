@@ -11,7 +11,7 @@ final class ToolStressTests: XCTestCase {
 
     private func launch(_ screen: String) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-demo", "-screen", screen]
+        app.launchArguments = ["-demo", "-screen", screen, "-AppleLanguages", "(it)", "-AppleLocale", "it_IT"]
         app.launch()
         XCTAssertTrue(app.buttons["Lazo"].waitForExistence(timeout: 40), "the editor did not open")
         return app

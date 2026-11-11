@@ -32,7 +32,7 @@ struct SettingsView: View {
                             Button {
                                 backup.syncNow(library)
                             } label: {
-                                Label(backup.running ? "Sincronizzazione…" : "Sincronizza adesso", systemImage: "arrow.triangle.2.circlepath")
+                                Label(backup.running ? String(localized: "Sincronizzazione…") : String(localized: "Sincronizza adesso"), systemImage: "arrow.triangle.2.circlepath")
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(PrimaryButtonStyle())

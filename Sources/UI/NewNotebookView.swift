@@ -60,15 +60,15 @@ struct NewNotebookView: View {
         let layout = regular ? AnyLayout(HStackLayout(alignment: .center, spacing: 22)) : AnyLayout(VStackLayout(spacing: 14))
         return layout {
             HStack(spacing: 12) {
-                tabButton(.cover, caption: "COPERTINA",
-                          name: cover.map { "\(style.label), \(Covers.names[$0].lowercased())" } ?? "Prima pagina") {
+                tabButton(.cover, caption: String(localized: "COPERTINA"),
+                          name: cover.map { "\(style.label), \(Covers.names[$0].lowercased())" } ?? String(localized: "Prima pagina")) {
                     if let cover {
                         CoverArt(color: Covers.color(cover), style: style, title: title)
                     } else {
                         TemplatePreview(template: template, paper: paper, format: format)
                     }
                 }
-                tabButton(.paper, caption: "CARTA", name: template.label) {
+                tabButton(.paper, caption: String(localized: "CARTA"), name: template.label) {
                     TemplatePreview(template: template, paper: paper, format: format)
                 }
             }
@@ -92,7 +92,7 @@ struct NewNotebookView: View {
                                 }
                             }
                         } label: {
-                            Label(library.folders.first { $0.id == folderID }?.name ?? "Documenti", systemImage: "folder")
+                            Label(library.folders.first { $0.id == folderID }?.name ?? String(localized: "Documenti"), systemImage: "folder")
                                 .font(.subheadline.weight(.semibold))
                                 .padding(.horizontal, 14).frame(height: 48)
                                 .background(Theme.input, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -135,7 +135,7 @@ struct NewNotebookView: View {
     private var paperOptions: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                optionMenu(icon: "paintpalette", text: "Carta \(paper.label.lowercased())") {
+                optionMenu(icon: "paintpalette", text: String(localized: "Carta \(paper.label.lowercased())")) {
                     ForEach(Paper.allCases) { p in
                         Button { paper = p } label: { if paper == p { Label(p.label, systemImage: "checkmark") } else { Text(p.label) } }
                     }
@@ -213,8 +213,8 @@ struct NewNotebookView: View {
                 .buttonStyle(.plain)
             }
             // the demo screenshot of the covers starts from the illustrated ones
-            ForEach(Demo.screen == "covers" ? [("Illustrate", CoverStyle.illustrated), ("Classiche", CoverStyle.classic)]
-                                            : [("Classiche", CoverStyle.classic), ("Illustrate", CoverStyle.illustrated)], id: \.0) { group in
+            ForEach(Demo.screen == "covers" ? [(String(localized: "Illustrate"), CoverStyle.illustrated), (String(localized: "Classiche"), CoverStyle.classic)]
+                                            : [(String(localized: "Classiche"), CoverStyle.classic), (String(localized: "Illustrate"), CoverStyle.illustrated)], id: \.0) { group in
                 Text(group.0).font(.headline).foregroundStyle(Theme.text).padding(.top, 4)
                 ForEach(group.1) { st in
                     Text(st.label.uppercased()).font(.caption.weight(.bold)).foregroundStyle(Theme.sub).tracking(0.6)

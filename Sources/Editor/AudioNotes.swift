@@ -263,14 +263,14 @@ struct AudioBar: View {
                 Button { audio.togglePlay() } label: {
                     Image(systemName: audio.playing ? "pause.fill" : "play.fill").font(.title3).frame(width: 28)
                 }
-                .accessibilityLabel(audio.playing ? "Pausa" : "Riproduci")
+                .accessibilityLabel(audio.playing ? String(localized: "Pausa") : String(localized: "Riproduci"))
                 Slider(value: Binding(get: { audio.position }, set: { audio.seek($0) }), in: 0...max(1, audio.duration))
                     .tint(Theme.accent)
                 Text("\(AudioNotes.clock(audio.position)) / \(AudioNotes.clock(audio.duration))")
                     .font(.caption.monospacedDigit()).foregroundStyle(Theme.sub)
                     .fixedSize()
             } else {
-                Text(model.recordings.isEmpty ? "Tocca il pallino rosso per registrare mentre scrivi." : "Scegli una registrazione dall'elenco.")
+                Text(model.recordings.isEmpty ? String(localized: "Tocca il pallino rosso per registrare mentre scrivi.") : String(localized: "Scegli una registrazione dall'elenco."))
                     .font(.caption).foregroundStyle(Theme.sub)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

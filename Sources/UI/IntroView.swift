@@ -20,20 +20,20 @@ struct IntroView: View {
 
     private var steps: [Step] {
         [
-            Step(title: "Benvenuto in Quaderno Appunti",
-                 text: "Quaderni da scrivere a mano, PDF da annotare e la ricerca nella tua scrittura. Tutto resta sul tuo iPhone o iPad.",
+            Step(title: String(localized: "Benvenuto in Quaderno Appunti"),
+                 text: String(localized: "Quaderni da scrivere a mano, PDF da annotare e la ricerca nella tua scrittura. Tutto resta sul tuo iPhone o iPad."),
                  art: AnyView(WelcomeArt())),
-            Step(title: "Scrivi come su carta",
-                 text: "Penna, matita, evidenziatore, gomma e forme dalla barra in alto, con spessore e colore. Due dita per scorrere e ingrandire; tira oltre la fine della pagina per passare alla successiva. Su iPad puoi scrivere solo con la Pencil: lo trovi nel menu ⋯.",
+            Step(title: String(localized: "Scrivi come su carta"),
+                 text: String(localized: "Penna, matita, evidenziatore, gomma e forme dalla barra in alto, con spessore e colore. Due dita per scorrere e ingrandire; tira oltre la fine della pagina per passare alla successiva. Su iPad puoi scrivere solo con la Pencil: lo trovi nel menu ⋯."),
                  art: AnyView(WriteArt())),
-            Step(title: "PDF, testi e foto",
-                 text: "Importa un PDF e scrivici sopra: l'evidenziatore colora senza coprire il testo. Aggiungi riquadri di testo e foto; con la mano li sposti e li ridimensioni.",
+            Step(title: String(localized: "PDF, testi e foto"),
+                 text: String(localized: "Importa un PDF e scrivici sopra: l'evidenziatore colora senza coprire il testo. Aggiungi riquadri di testo e foto; con la mano li sposti e li ridimensioni."),
                  art: AnyView(PDFArt())),
-            Step(title: "Ritrova tutto",
-                 text: "La lente cerca nei titoli, nei testi, nei PDF e anche nella tua scrittura a mano, riconosciuta sul dispositivo. Con i segnalibri ritrovi subito le pagine importanti.",
+            Step(title: String(localized: "Ritrova tutto"),
+                 text: String(localized: "La lente cerca nei titoli, nei testi, nei PDF e anche nella tua scrittura a mano, riconosciuta sul dispositivo. Con i segnalibri ritrovi subito le pagine importanti."),
                  art: AnyView(SearchArt())),
-            Step(title: "Al sicuro su iCloud Drive",
-                 text: "Nelle Impostazioni scegli una cartella di iCloud Drive: l'app ci copia i quaderni da sola e da lì li ripristini su un altro iPhone o iPad. I quaderni eliminati restano 30 giorni nel cestino.",
+            Step(title: String(localized: "Uguali su tutti i dispositivi"),
+                 text: String(localized: "Nelle Impostazioni scegli una cartella di iCloud Drive, e la stessa sugli altri iPhone e iPad: i quaderni si sincronizzano da soli. Con Spotlight li trovi anche dalla schermata Home. I quaderni eliminati restano 30 giorni nel cestino."),
                  art: AnyView(CloudArt())),
         ]
     }
@@ -89,7 +89,7 @@ struct IntroView: View {
             .padding(.bottom, 18)
 
             VStack(spacing: 10) {
-                Button(page == last ? "Inizia a scrivere" : "Avanti") {
+                Button(page == last ? String(localized: "Inizia a scrivere") : String(localized: "Avanti")) {
                     if page == last { finish() } else { withAnimation { page += 1 } }
                 }
                 .buttonStyle(PrimaryButtonStyle())
@@ -266,7 +266,7 @@ private struct SearchArt: View {
             .padding(.horizontal, 14).frame(width: 280, height: 42)
             .background(Theme.input, in: Capsule())
             .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
-            ForEach([("Fisica 1", "p. 1", "le leggi di Newton"), ("Analisi 2", "p. 1", "teorema (Newton–Leibniz)")], id: \.0) { nb, p, snippet in
+            ForEach([(String(localized: "Fisica 1"), "p. 1", String(localized: "le leggi di Newton")), (String(localized: "Analisi 2"), "p. 1", String(localized: "teorema (Newton–Leibniz)"))], id: \.0) { nb, p, snippet in
                 HStack(alignment: .top, spacing: 10) {
                     Text(p).font(.caption.weight(.bold)).foregroundStyle(Theme.accent).frame(width: 30, alignment: .leading)
                     VStack(alignment: .leading, spacing: 3) {

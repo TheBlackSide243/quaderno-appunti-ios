@@ -355,7 +355,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
             return
         }
         let ready = abs(o) >= pullThreshold
-        pullHint.text = ready ? "Rilascia: \(text)" : text
+        pullHint.text = ready ? String(localized: "Rilascia: \(text)") : text
         pullHint.sizeToFit()
         let size = pullHint.bounds.size
         let y = o < 0 ? 14 : bounds.height - safeAreaInsets.bottom - size.height - 14

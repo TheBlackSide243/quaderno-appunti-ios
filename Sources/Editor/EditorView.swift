@@ -143,7 +143,7 @@ struct EditorView: View {
                     if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) {
                         model.addImage(img)
                     } else {
-                        error = "Non riesco a leggere la foto."
+                        error = String(localized: "Non riesco a leggere la foto.")
                     }
                 }
             }
@@ -239,7 +239,7 @@ struct EditorView: View {
                 Button { model.toggleBookmark(model.pageIndex) } label: {
                     Image(systemName: model.page.isBookmarked ? "bookmark.fill" : "bookmark")
                 }
-                .accessibilityLabel(model.page.isBookmarked ? "Togli il segnalibro" : "Aggiungi un segnalibro")
+                .accessibilityLabel(model.page.isBookmarked ? String(localized: "Togli il segnalibro") : String(localized: "Aggiungi un segnalibro"))
                 Menu {
                     ForEach(PageTemplate.allCases) { t in
                         Button(t.label) { model.addPage(after: model.pageIndex, template: t) }
@@ -272,7 +272,7 @@ struct EditorView: View {
                 } label: { Label("Nuova pagina dopo questa", systemImage: "doc.badge.plus") }
             }
             Button {
-                if !model.paste() { error = "Negli appunti del telefono non c'è niente da incollare (testo o immagine)." }
+                if !model.paste() { error = String(localized: "Negli appunti del telefono non c'è niente da incollare (testo o immagine).") }
             } label: { Label("Incolla", systemImage: "doc.on.clipboard") }
             if ScannerView.isSupported {
                 Button { showScanner = true } label: { Label("Scansiona pagine", systemImage: "doc.viewfinder") }
@@ -282,7 +282,7 @@ struct EditorView: View {
         }
         Section("Pagina") {
             Button { model.toggleBookmark(model.pageIndex) } label: {
-                Label(model.page.isBookmarked ? "Togli il segnalibro" : "Aggiungi un segnalibro",
+                Label(model.page.isBookmarked ? String(localized: "Togli il segnalibro") : String(localized: "Aggiungi un segnalibro"),
                       systemImage: model.page.isBookmarked ? "bookmark.slash" : "bookmark")
             }
             Menu {
@@ -308,7 +308,7 @@ struct EditorView: View {
         }
         Section("Quaderno") {
             Button { model.insertContents() } label: {
-                Label(model.bookmarkCount > 0 ? "Inserisci indice dei segnalibri" : "Inserisci indice", systemImage: "list.bullet.rectangle")
+                Label(model.bookmarkCount > 0 ? String(localized: "Inserisci indice dei segnalibri") : String(localized: "Inserisci indice"), systemImage: "list.bullet.rectangle")
             }
             Button { showSearch = true } label: { Label("Cerca nel quaderno", systemImage: "magnifyingglass") }
             Button { showPages = true } label: { Label("Tutte le pagine", systemImage: "square.grid.2x2") }
@@ -324,7 +324,7 @@ struct EditorView: View {
         do {
             share = ShareFile(url: try make())
         } catch {
-            self.error = "Esportazione non riuscita: \(error.localizedDescription)"
+            self.error = String(localized: "Esportazione non riuscita: \(error.localizedDescription)")
         }
     }
 }
@@ -356,13 +356,13 @@ struct PageNav: View {
                 Image(systemName: model.pageIndex + 1 < model.notebook.pages.count ? "chevron.right" : "plus")
                     .frame(width: 40, height: 36)
             }
-            .accessibilityLabel(model.pageIndex + 1 < model.notebook.pages.count ? "Pagina successiva" : "Nuova pagina")
+            .accessibilityLabel(model.pageIndex + 1 < model.notebook.pages.count ? String(localized: "Pagina successiva") : String(localized: "Nuova pagina"))
             Rectangle().fill(Theme.line).frame(width: 1, height: 20)
             Button { model.toggleBookmark(model.pageIndex) } label: {
                 Image(systemName: model.page.isBookmarked ? "bookmark.fill" : "bookmark")
                     .frame(width: 40, height: 36)
             }
-            .accessibilityLabel(model.page.isBookmarked ? "Togli il segnalibro" : "Aggiungi un segnalibro")
+            .accessibilityLabel(model.page.isBookmarked ? String(localized: "Togli il segnalibro") : String(localized: "Aggiungi un segnalibro"))
         }
         .font(.body.weight(.semibold))
         .foregroundStyle(Theme.accent)

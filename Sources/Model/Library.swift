@@ -187,7 +187,7 @@ final class Library {
     @discardableResult
     func create(title: String, cover: Int?, style: CoverStyle, template: PageTemplate, paper: Paper, format: PageFormat, folder: UUID?) -> Notebook {
         let name = title.trimmingCharacters(in: .whitespaces)
-        var nb = Notebook(title: name.isEmpty ? "Senza titolo" : name, cover: cover, paper: paper, folderID: folder,
+        var nb = Notebook(title: name.isEmpty ? String(localized: "Senza titolo") : name, cover: cover, paper: paper, folderID: folder,
                           pages: [PageInfo(template: template, size: format.size)])
         nb.coverStyle = style
         save(nb)
@@ -200,11 +200,11 @@ final class Library {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         guard let doc = PDFDocument(url: url), doc.pageCount > 0 else {
-            error = "Il file non è un PDF leggibile."
+            error = String(localized: "Il file non è un PDF leggibile.")
             return nil
         }
         if doc.isLocked {
-            error = "Il PDF è protetto da password: sbloccalo prima di importarlo."
+            error = String(localized: "Il PDF è protetto da password: sbloccalo prima di importarlo.")
             return nil
         }
         var nb = Notebook(title: url.deletingPathExtension().lastPathComponent, cover: nil, folderID: folder, pages: [])
@@ -213,7 +213,7 @@ final class Library {
         do {
             try FileManager.default.copyItem(at: url, to: Store.pdf(nb.id))
         } catch {
-            self.error = "Non riesco a copiare il PDF: \(error.localizedDescription)"
+            self.error = String(localized: "Non riesco a copiare il PDF: \(error.localizedDescription)")
             try? FileManager.default.removeItem(at: Store.dir(nb.id))
             return nil
         }
@@ -233,7 +233,7 @@ final class Library {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         guard let incoming = PDFDocument(url: url), incoming.pageCount > 0, !incoming.isLocked else {
-            error = "Il file non è un PDF leggibile (o è protetto da password)."
+            error = String(localized: "Il file non è un PDF leggibile (o è protetto da password).")
             return nil
         }
         var merged = PDFDocument()
@@ -245,7 +245,7 @@ final class Library {
         // Written next to the old file first: the old one is still being read lazily.
         let tmp = Store.dir(id).appendingPathComponent("source-new.pdf")
         guard merged.write(to: tmp) else {
-            error = "Non riesco a salvare il PDF unito."
+            error = String(localized: "Non riesco a salvare il PDF unito.")
             return nil
         }
         do {
@@ -255,7 +255,7 @@ final class Library {
                 try FileManager.default.moveItem(at: tmp, to: Store.pdf(id))
             }
         } catch {
-            self.error = "Non riesco a salvare il PDF unito: \(error.localizedDescription)"
+            self.error = String(localized: "Non riesco a salvare il PDF unito: \(error.localizedDescription)")
             return nil
         }
         PDFCache.shared.forget(id)
@@ -286,7 +286,7 @@ final class Library {
         }
         guard !nb.pages.isEmpty else {
             try? FileManager.default.removeItem(at: Store.dir(nb.id))
-            error = "Non riesco a leggere le immagini."
+            error = String(localized: "Non riesco a leggere le immagini.")
             return nil
         }
         save(nb)
@@ -404,12 +404,12 @@ final class Library {
         guard var nb = notebook(id) else { return }
         let old = nb.id
         nb.id = UUID()
-        nb.title += " (copia)"
+        nb.title += String(localized: " (copia)")
         nb.created = Date()
         do {
             try FileManager.default.copyItem(at: Store.dir(old), to: Store.dir(nb.id))
         } catch {
-            self.error = "Copia non riuscita: \(error.localizedDescription)"
+            self.error = String(localized: "Copia non riuscita: \(error.localizedDescription)")
             return
         }
         save(nb)
@@ -428,7 +428,7 @@ final class Library {
             if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
             try fm.moveItem(at: Store.dir(id), to: dst)
         } catch {
-            self.error = "Non riesco a spostare il quaderno nel cestino: \(error.localizedDescription)"
+            self.error = String(localized: "Non riesco a spostare il quaderno nel cestino: \(error.localizedDescription)")
             return
         }
         PDFCache.shared.forget(id)
@@ -449,7 +449,7 @@ final class Library {
             if fm.fileExists(atPath: Store.dir(id).path) { try fm.removeItem(at: Store.dir(id)) }
             try fm.moveItem(at: src, to: Store.dir(id))
         } catch {
-            self.error = "Non riesco a ripristinare il quaderno: \(error.localizedDescription)"
+            self.error = String(localized: "Non riesco a ripristinare il quaderno: \(error.localizedDescription)")
             return
         }
         nb.deletedAt = nil

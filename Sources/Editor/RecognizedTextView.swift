@@ -30,9 +30,9 @@ struct RecognizedTextView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
                     }
-                    section("Scrittura a mano", text.ink)
-                    section("Testo digitato", text.typed)
-                    section("Dal PDF", text.pdf)
+                    section(String(localized: "Scrittura a mano"), text.ink)
+                    section(String(localized: "Testo digitato"), text.typed)
+                    section(String(localized: "Dal PDF"), text.pdf)
                 }
                 .padding(16)
             }

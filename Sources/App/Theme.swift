@@ -33,7 +33,7 @@ struct Panel<Content: View>: View {
             if title != nil || trailing != nil {
                 HStack {
                     if let title {
-                        Text(title.uppercased()).font(.caption.bold()).foregroundStyle(Theme.sub).tracking(0.6)
+                        Text(LocalizedStringKey(title)).textCase(.uppercase).font(.caption.bold()).foregroundStyle(Theme.sub).tracking(0.6)
                     }
                     Spacer()
                     if let trailing { trailing }
@@ -63,7 +63,7 @@ struct InfoRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(label).foregroundStyle(Theme.sub)
+            Text(LocalizedStringKey(label)).foregroundStyle(Theme.sub)
             Spacer(minLength: 12)
             Text(value).foregroundStyle(color).multilineTextAlignment(.trailing).textSelection(.enabled)
         }
@@ -106,9 +106,9 @@ struct Field: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(Theme.sub)
+            Text(LocalizedStringKey(title)).font(.caption.weight(.semibold)).foregroundStyle(Theme.sub)
             Group {
-                if secure { SecureField(prompt, text: $text) } else { TextField(prompt, text: $text) }
+                if secure { SecureField(LocalizedStringKey(prompt), text: $text) } else { TextField(LocalizedStringKey(prompt), text: $text) }
             }
             .keyboardType(keyboard)
             .textInputAutocapitalization(.never)

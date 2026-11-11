@@ -84,12 +84,12 @@ struct TrashView: View {
 
     private var emptyQuestion: String {
         let n = library.trashed.count
-        let what = n == 1 ? "Il quaderno verrà cancellato" : "I \(n) quaderni verranno cancellati"
-        return "Svuotare il cestino? \(what) del tutto e non si potrà recuperare."
+        let what = n == 1 ? String(localized: "Il quaderno verrà cancellato") : String(localized: "I \(n) quaderni verranno cancellati")
+        return String(localized: "Svuotare il cestino? \(what) del tutto e non si potrà recuperare.")
     }
 
     private func daysText(_ nb: Notebook) -> String {
         let d = library.daysLeft(nb)
-        return d == 0 ? "ultimo giorno" : (d == 1 ? "ancora 1 giorno" : "ancora \(d) giorni")
+        return d == 0 ? String(localized: "ultimo giorno") : (d == 1 ? String(localized: "ancora 1 giorno") : String(localized: "ancora \(d) giorni"))
     }
 }

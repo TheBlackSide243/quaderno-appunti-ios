@@ -10,14 +10,14 @@ enum Tool: String, CaseIterable, Codable, Identifiable {
 
     var label: String {
         switch self {
-        case .pen: "Penna"
-        case .pencil: "Matita"
-        case .highlighter: "Evidenziatore"
-        case .eraser: "Gomma"
-        case .shape: "Forme"
-        case .lasso: "Lazo"
-        case .hand: "Sposta testi e foto"
-        case .laser: "Puntatore laser"
+        case .pen: String(localized: "Penna")
+        case .pencil: String(localized: "Matita")
+        case .highlighter: String(localized: "Evidenziatore")
+        case .eraser: String(localized: "Gomma")
+        case .shape: String(localized: "Forme")
+        case .lasso: String(localized: "Lazo")
+        case .hand: String(localized: "Sposta testi e foto")
+        case .laser: String(localized: "Puntatore laser")
         }
     }
 
@@ -140,8 +140,8 @@ final class EditorModel {
     func showPage() {
         guard notebook.pages.indices.contains(pageIndex) else { return }
         canvas.load(notebook, page)
-        canvas.pullLabels = (pageIndex > 0 ? "Pagina precedente" : nil,
-                             pageIndex + 1 < notebook.pages.count ? "Pagina successiva" : "Nuova pagina")
+        canvas.pullLabels = (pageIndex > 0 ? String(localized: "Pagina precedente") : nil,
+                             pageIndex + 1 < notebook.pages.count ? String(localized: "Pagina successiva") : String(localized: "Nuova pagina"))
         selected = nil
     }
 

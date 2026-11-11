@@ -9,21 +9,21 @@ enum PageTemplate: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .blank: "Bianca"
-        case .lined: "Righe"
-        case .grid: "Quadretti"
-        case .dotted: "Puntini"
-        case .cornell: "Cornell"
-        case .narrow: "Righe strette"
-        case .checklist: "Elenco"
-        case .music: "Pentagramma"
+        case .blank: String(localized: "Bianca")
+        case .lined: String(localized: "Righe")
+        case .grid: String(localized: "Quadretti")
+        case .dotted: String(localized: "Puntini")
+        case .cornell: String(localized: "Cornell")
+        case .narrow: String(localized: "Righe strette")
+        case .checklist: String(localized: "Elenco")
+        case .music: String(localized: "Pentagramma")
         }
     }
 
     /// How the gallery of the new notebook groups the rulings.
     static let groups: [(String, [PageTemplate])] = [
-        ("Essenziali", [.blank, .dotted, .grid, .lined, .narrow]),
-        ("Studio e organizzazione", [.cornell, .checklist, .music]),
+        (String(localized: "Essenziali"), [.blank, .dotted, .grid, .lined, .narrow]),
+        (String(localized: "Studio e organizzazione"), [.cornell, .checklist, .music]),
     ]
 }
 
@@ -36,18 +36,18 @@ enum CoverStyle: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .plain: "Semplice"
-        case .elastic: "Con elastico"
-        case .label: "Con etichetta"
-        case .waves: "Onde"
-        case .mosaic: "Mosaico"
-        case .dots: "Pois"
-        case .marble: "Marmo"
-        case .leaves: "Foglie"
-        case .mountains: "Montagne"
-        case .stars: "Notte stellata"
-        case .terrazzo: "Terrazzo"
-        case .aurora: "Aurora"
+        case .plain: String(localized: "Semplice")
+        case .elastic: String(localized: "Con elastico")
+        case .label: String(localized: "Con etichetta")
+        case .waves: String(localized: "Onde")
+        case .mosaic: String(localized: "Mosaico")
+        case .dots: String(localized: "Pois")
+        case .marble: String(localized: "Marmo")
+        case .leaves: String(localized: "Foglie")
+        case .mountains: String(localized: "Montagne")
+        case .stars: String(localized: "Notte stellata")
+        case .terrazzo: String(localized: "Terrazzo")
+        case .aurora: String(localized: "Aurora")
         }
     }
 
@@ -75,10 +75,10 @@ enum ShapeKind: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .line: "Linea"
-        case .arrow: "Freccia"
-        case .rectangle: "Rettangolo"
-        case .ellipse: "Ellisse"
+        case .line: String(localized: "Linea")
+        case .arrow: String(localized: "Freccia")
+        case .rectangle: String(localized: "Rettangolo")
+        case .ellipse: String(localized: "Ellisse")
         }
     }
 
@@ -99,9 +99,9 @@ enum SortOrder: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .date: "Data"
-        case .name: "Nome"
-        case .kind: "Tipo"
+        case .date: String(localized: "Data")
+        case .name: String(localized: "Nome")
+        case .kind: String(localized: "Tipo")
         }
     }
 }
@@ -113,10 +113,10 @@ enum Paper: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .white: "Bianca"
-        case .ivory: "Avorio"
-        case .yellow: "Gialla"
-        case .gray: "Grigio chiaro"
+        case .white: String(localized: "paper.white", defaultValue: "Bianca")
+        case .ivory: String(localized: "Avorio")
+        case .yellow: String(localized: "Gialla")
+        case .gray: String(localized: "Grigio chiaro")
         }
     }
 
@@ -137,10 +137,10 @@ enum PageFormat: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .a4Portrait: "A4 verticale"
-        case .a4Landscape: "A4 orizzontale"
-        case .letter: "Lettera"
-        case .square: "Quadrato"
+        case .a4Portrait: String(localized: "A4 verticale")
+        case .a4Landscape: String(localized: "A4 orizzontale")
+        case .letter: String(localized: "Lettera")
+        case .square: String(localized: "Quadrato")
         }
     }
 
@@ -172,7 +172,7 @@ enum Covers {
         Color(red: 52 / 255, green: 58 / 255, blue: 68 / 255),
     ]
 
-    static let names = ["Giallo", "Blu", "Verde", "Rosso", "Viola", "Rosa", "Arancione", "Ardesia", "Notte", "Cuoio", "Kraft", "Salvia", "Antracite"]
+    static let names = [String(localized: "Giallo"), String(localized: "Blu"), String(localized: "Verde"), String(localized: "Rosso"), String(localized: "Viola"), String(localized: "Rosa"), String(localized: "Arancione"), String(localized: "Ardesia"), String(localized: "Notte"), String(localized: "Cuoio"), String(localized: "Kraft"), String(localized: "Salvia"), String(localized: "Antracite")]
 
     static func color(_ index: Int) -> Color { colors[((index % colors.count) + colors.count) % colors.count] }
 }

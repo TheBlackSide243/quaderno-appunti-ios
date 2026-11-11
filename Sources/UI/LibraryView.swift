@@ -152,8 +152,8 @@ struct ShelfView: View {
     private var title: String {
         if let t = activeTag { return t }
         if favoritesOnly { return String(localized: "Preferiti") }
-        if let folder { return library.folders.first { $0.id == folder }?.name ?? "Cartella" }
-        return "Documenti"
+        if let folder { return library.folders.first { $0.id == folder }?.name ?? String(localized: "Cartella") }
+        return String(localized: "Documenti")
     }
 
     private var columns: [GridItem] {
@@ -175,8 +175,8 @@ struct ShelfView: View {
                 if folder == nil && !library.allTags.isEmpty { tagRow }
                 if listMode { list } else { grid }
                 if notebooks.isEmpty && folders.isEmpty && (folder != nil || favoritesOnly) {
-                    Text(favoritesOnly ? "Nessun preferito: tieni premuto un quaderno o usa il suo menu per aggiungerlo."
-                                       : "Questa cartella è vuota. Crea un quaderno qui o spostane uno dal suo menu.")
+                    Text(favoritesOnly ? String(localized: "Nessun preferito: tieni premuto un quaderno o usa il suo menu per aggiungerlo.")
+                                       : String(localized: "Questa cartella è vuota. Crea un quaderno qui o spostane uno dal suo menu."))
                         .font(.subheadline).foregroundStyle(Theme.sub).multilineTextAlignment(.center)
                         .padding(.top, 20)
                 }
@@ -218,7 +218,7 @@ struct ShelfView: View {
             ScannerView { images in
                 showScanner = false
                 guard let images, !images.isEmpty else { return }
-                let title = "Scansione del " + Date().formatted(.dateTime.day().month(.abbreviated))
+                let title = String(localized: "Scansione del \(Date().formatted(.dateTime.day().month(.abbreviated)))")
                 if let nb = library.importImages(images, title: title, folder: folder) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { router.open = OpenRequest(notebookID: nb.id) }
                 }
@@ -235,7 +235,7 @@ struct ShelfView: View {
                 for item in items {
                     if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) { images.append(img) }
                 }
-                let title = "Foto del " + Date().formatted(.dateTime.day().month(.abbreviated))
+                let title = String(localized: "Foto del \(Date().formatted(.dateTime.day().month(.abbreviated)))")
                 let nb = library.importImages(images, title: title, folder: folder)
                 busy = false
                 if let nb { router.open = OpenRequest(notebookID: nb.id) }
@@ -272,10 +272,10 @@ struct ShelfView: View {
             Button("Annulla", role: .cancel) {}
             Button("Salva") { if let nb = renaming { library.rename(nb.id, to: newName) } }
         }
-        .alert(renamingFolder == nil ? "Nuova cartella" : "Rinomina cartella", isPresented: $askFolder) {
+        .alert(renamingFolder == nil ? String(localized: "Nuova cartella") : String(localized: "Rinomina cartella"), isPresented: $askFolder) {
             TextField("Nome", text: $folderName)
             Button("Annulla", role: .cancel) { renamingFolder = nil }
-            Button(renamingFolder == nil ? "Crea" : "Salva") {
+            Button(renamingFolder == nil ? String(localized: "Crea") : String(localized: "Salva")) {
                 if let f = renamingFolder { library.renameFolder(f.id, folderName) } else { library.addFolder(folderName) }
                 renamingFolder = nil
             }
@@ -318,7 +318,7 @@ struct ShelfView: View {
                 Image(systemName: listMode ? "square.grid.2x2" : "list.bullet")
             }
             .foregroundStyle(Theme.sub)
-            .accessibilityLabel(listMode ? "Griglia" : "Elenco")
+            .accessibilityLabel(listMode ? String(localized: "Griglia") : String(localized: "Elenco"))
         }
         .font(.title3)
     }
@@ -387,7 +387,7 @@ struct ShelfView: View {
                         .buttonStyle(.plain)
                         .contextMenu { folderMenu(f) }
                     caption(f.name) { folderMenu(f) }
-                    Text(library.count(in: f.id) == 1 ? "1 quaderno" : "\(library.count(in: f.id)) quaderni")
+                    Text(library.count(in: f.id) == 1 ? String(localized: "1 quaderno") : String(localized: "\(library.count(in: f.id)) quaderni"))
                         .font(.caption).foregroundStyle(Theme.sub)
                 }
             }
@@ -430,7 +430,7 @@ struct ShelfView: View {
             ForEach(folders) { f in
                 NavigationLink(value: f.id) {
                     row(art: AnyView(FolderArt(count: library.count(in: f.id))), title: f.name,
-                        subtitle: "\(library.count(in: f.id)) quaderni") { folderMenu(f) }
+                        subtitle: String(localized: "\(library.count(in: f.id)) quaderni")) { folderMenu(f) }
                 }
                 .buttonStyle(.plain)
                 .contextMenu { folderMenu(f) }
@@ -495,7 +495,7 @@ struct ShelfView: View {
     private func menu(_ nb: Notebook) -> some View {
         Button { router.open = OpenRequest(notebookID: nb.id) } label: { Label("Apri", systemImage: "book") }
         Button { library.toggleFavorite(nb.id) } label: {
-            Label(nb.favorite ? "Togli dai preferiti" : "Aggiungi ai preferiti", systemImage: nb.favorite ? "star.slash" : "star")
+            Label(nb.favorite ? String(localized: "Togli dai preferiti") : String(localized: "Aggiungi ai preferiti"), systemImage: nb.favorite ? "star.slash" : "star")
         }
         Button { newName = nb.title; renaming = nb } label: { Label("Rinomina", systemImage: "pencil") }
         Menu {
@@ -535,7 +535,7 @@ struct ShelfView: View {
         } label: { Label("Etichette", systemImage: "tag") }
         Button { library.duplicate(nb.id) } label: { Label("Duplica", systemImage: "plus.square.on.square") }
         Button {
-            do { share = ShareFile(url: try PageRenderer.exportPDF(nb)) } catch { library.error = "Esportazione non riuscita: \(error.localizedDescription)" }
+            do { share = ShareFile(url: try PageRenderer.exportPDF(nb)) } catch { library.error = String(localized: "Esportazione non riuscita: \(error.localizedDescription)") }
         } label: { Label("Esporta PDF", systemImage: "square.and.arrow.up") }
         Divider()
         Button(role: .destructive) { confirmDelete = nb } label: { Label("Elimina", systemImage: "trash") }
