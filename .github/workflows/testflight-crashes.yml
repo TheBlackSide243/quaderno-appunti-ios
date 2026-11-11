@@ -1,0 +1,33 @@
+# Reads the crashes and the feedback the testers sent from TestFlight (App Store Connect API) and
+# keeps them as an artifact. Started by hand. Uses the same API key as the TestFlight workflow.
+name: TestFlight crashes
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crashes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read from App Store Connect
+        run: |
+          pip install --quiet pyjwt cryptography requests
+          python3 scripts/testflight_crashes.py out
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          BUNDLE: win.shadowbyte.appunti
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: testflight-crashes
+          path: out
+          retention-days: 14
