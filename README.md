@@ -43,16 +43,21 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 ## Cosa fa
 
 - **Libreria** a griglia o a elenco, ordinata per data, nome o tipo; cartelle, preferiti e un
-  menu sotto ogni quaderno (rinomina, copertina, sposta, duplica, esporta, elimina).
+  menu sotto ogni quaderno (rinomina, copertina, sposta, etichette, duplica, esporta, elimina).
+  **Etichette** (Scuola, Lavoro…) con i pulsanti sopra lo scaffale per vedere solo quelle.
   I quaderni eliminati restano 30 giorni nel **cestino** (Impostazioni → Cestino).
-- **Copertine** semplici, con elastico o con etichetta, in 13 colori, oppure la prima pagina.
+- **Copertine** classiche (semplici, con elastico o con etichetta) e illustrate (onde, mosaico,
+  pois, marmo, foglie, montagne, notte stellata, terrazzo, aurora), in 13 colori, oppure la prima
+  pagina.
 - **Pagine** bianche, a puntini, a quadretti, a righe, a righe strette, Cornell, elenco con
   caselle o pentagramma; carta bianca, avorio, gialla o grigia; A4 verticale/orizzontale,
   Lettera o quadrato. Griglia delle pagine per saltare, duplicare, spostare o eliminare;
-  **segnalibri** per ritrovare subito le pagine importanti.
+  **segnalibri** per ritrovare subito le pagine importanti, **collegamenti** da un riquadro o
+  una foto a un'altra pagina e una **pagina indice** con l'elenco delle pagine, ogni riga un
+  collegamento.
 - **Barra strumenti** sempre in vista: penna, matita, evidenziatore, gomma (tratto intero,
   piccola, grande), **forme** (linea, freccia, rettangolo, ellisse), lazo, mano per spostare
-  testi e foto, righello; tre spessori e tre colori per strumento più un colore a scelta,
+  testi e foto, **puntatore laser**, righello; tre spessori e tre colori per strumento più un colore a scelta,
   ricordati tra un quaderno e l'altro. Zoom a due dita, annulla/ripeti. Si cambia pagina anche
   tirando oltre la fine del foglio. Su iPad si può scrivere solo con la Pencil e scorrere col
   dito; il doppio tocco sulla Pencil passa alla gomma e torna indietro.
@@ -64,17 +69,23 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in
   italiano e inglese), nei riquadri di testo e nel testo dei PDF, in tutta la libreria o solo
   nel quaderno aperto. **Testo riconosciuto** mostra il testo di una pagina, da copiare.
+- **Registrazione audio** mentre scrivi, anche a schermo bloccato: toccando una parola scritta
+  si sente cosa si diceva in quel momento.
+- **Spotlight**: quaderni e testo delle pagine (anche scritto a mano) nella ricerca dell'iPhone.
 - **Esporta** il quaderno o una pagina in PDF, o la pagina come immagine, da condividere,
   stampare o salvare in File.
 - **Introduzione** in cinque schede al primo avvio, da rivedere quando si vuole dalle
   Impostazioni o dal "?" della libreria.
+- In **italiano** e in **inglese**, secondo la lingua del dispositivo.
 
-## iCloud Drive
+## Sincronizzazione con iCloud Drive
 
-In *Impostazioni → iCloud Drive* si sceglie una cartella (per esempio una nuova cartella
-«Quaderno Appunti» in iCloud Drive): l'app ci copia i quaderni dopo averne chiuso uno e quando va in
-secondo piano, oppure con *Salva adesso*. Su un altro iPhone o iPad si sceglie la stessa
-cartella e si tocca *Ripristina*.
+In *Impostazioni → Sincronizzazione con iCloud Drive* si sceglie una cartella (per esempio una
+nuova cartella «Quaderno Appunti» in iCloud Drive), e la stessa cartella sugli altri iPhone e
+iPad. L'app sincronizza quando si apre, dopo aver chiuso un quaderno e quando va in secondo
+piano, oppure con *Sincronizza adesso*. Ogni file segue la sua copia più recente (due dispositivi
+possono scrivere pagine diverse dello stesso quaderno), i quaderni eliminati spariscono anche
+dagli altri dispositivi e il quaderno aperto nell'editor non viene mai sostituito mentre si scrive.
 
 La sincronizzazione iCloud automatica di Apple richiede un account sviluppatore a pagamento e
 non funziona con le app installate con Feather o Sideloadly; una cartella scelta in File invece
