@@ -68,7 +68,7 @@ enum GoodNotesImport {
             var background: PageItem?
             let paperData = meta.paper.flatMap { zip.file("attachments/\($0)") }
             if let paper = meta.paper, let data = paperData, data.starts(with: Array("%PDF".utf8)) {
-                if papers[paper] == nil { papers[paper] = PDFDocument(data: data) }
+                if papers[paper] == nil { papers[paper] = PDFDocument(data: Data(data)) }
                 if let doc = papers[paper], doc.pageCount > 0,
                    let page = doc.page(at: min(meta.paperPage, doc.pageCount - 1))?.copy() as? PDFPage {
                     merged.insert(page, at: merged.pageCount)
@@ -81,7 +81,7 @@ enum GoodNotesImport {
             } else {
                 info = PageInfo(template: .blank, size: plainSize(meta))
                 // a paper that is a picture fills the page under everything else
-                if let data = paperData, let img = UIImage(data: data), let (name, _) = Store.saveImage(img, nb.id) {
+                if let data = paperData, let img = UIImage(data: Data(data)), let (name, _) = Store.saveImage(img, nb.id) {
                     var item = PageItem(kind: .image, x: 0, y: 0, w: info.width, h: info.height)
                     item.image = name
                     background = item
