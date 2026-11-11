@@ -2,12 +2,17 @@ import Foundation
 import Observation
 import UIKit
 
-/// Copies the notebooks into a folder the user picks in iCloud Drive (or any other provider in
-/// Files), and brings them back from there on another device.
+/// Keeps the notebooks in sync between devices through a folder the user picks in iCloud Drive
+/// (or any other provider in Files).
 ///
 /// Real iCloud sync needs an iCloud container, which only apps signed by a paid Apple developer
 /// account get; a sideloaded app cannot have one. A folder picked in Files works for every app:
-/// the app keeps a bookmark to it and iCloud Drive uploads what is written there.
+/// the app keeps a bookmark to it and iCloud Drive carries what is written there to the other
+/// devices, which pick the same folder.
+///
+/// Each file goes the way of its newest copy, so two devices can write different pages of the
+/// same notebook. The notebook's description (its list of pages) comes from the device that
+/// changed it last. Notebooks deleted on one device are deleted on the others (eliminati.json).
 @MainActor
 @Observable
 final class CloudBackup {
@@ -23,6 +28,7 @@ final class CloudBackup {
     private static let bookmarkKey = "backup.bookmark"
     @ObservationIgnored private var autoTask: Task<Void, Never>?
     @ObservationIgnored private var bgTask = UIBackgroundTaskIdentifier.invalid
+    @ObservationIgnored private var again = false
 
     init() {
         auto = UserDefaults.standard.object(forKey: "backup.auto") as? Bool ?? true
@@ -55,7 +61,7 @@ final class CloudBackup {
             error = nil
             message = nil
         } catch {
-            self.error = "Non riesco a ricordare la cartella: \(error.localizedDescription)"
+            self.error = String(localized: "Non riesco a ricordare la cartella: \(error.localizedDescription)")
         }
     }
 
@@ -65,49 +71,78 @@ final class CloudBackup {
         message = nil
     }
 
-    // MARK: Saving
+    // MARK: Syncing
 
-    /// Saves now when automatic saving is on (the app is going to the background).
-    func backupIfAuto(_ library: Library) {
+    /// Syncs now when automatic sync is on (the app opens or goes to the background).
+    func backupIfAuto(_ library: Library, open: UUID? = nil) {
         guard auto, configured else { return }
         autoTask?.cancel()
-        backupNow(library)
+        syncNow(library, open: open)
     }
 
-    /// Saves a few seconds after a notebook is closed.
+    /// Syncs a few seconds after a notebook is closed.
     func scheduleAuto(_ library: Library) {
         guard auto, configured else { return }
         autoTask?.cancel()
         autoTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
-            self?.backupNow(library)
+            self?.syncNow(library)
         }
     }
 
-    func backupNow(_ library: Library) {
-        guard !running, let url = resolve() else { return }
+    /// Sends what changed here and brings what changed on the other devices. The notebook open
+    /// in the editor (`open`) is only sent, never replaced while it is being written.
+    func syncNow(_ library: Library, open: UUID? = nil) {
+        guard let url = resolve() else { return }
+        guard !running else { again = true; return }
         running = true
         error = nil
-        let ids = library.notebooks.map(\.id)
+        let local = library.notebooks
         endBackgroundTask()
-        bgTask = UIApplication.shared.beginBackgroundTask(withName: "Salvataggio su iCloud Drive") { [weak self] in
+        bgTask = UIApplication.shared.beginBackgroundTask(withName: "Sincronizzazione iCloud Drive") { [weak self] in
             self?.endBackgroundTask()
         }
         Task.detached(priority: .utility) {
-            let result = Self.mirror(to: url, notebooks: ids)
+            let result = Self.sync(root: url, local: local, open: open)
             await MainActor.run {
                 self.running = false
                 switch result {
-                case .success(let n):
+                case .success(let r):
                     self.lastBackup = Date()
                     UserDefaults.standard.set(self.lastBackup, forKey: "backup.last")
-                    self.message = n == 0 ? "Già tutto salvato." : "Salvati \(n) file."
+                    self.apply(r, to: library)
+                    if r.sent == 0 && r.received == 0 && r.removed.isEmpty {
+                        self.message = String(localized: "Tutto sincronizzato.")
+                    } else {
+                        self.message = String(localized: "Sincronizzato: \(r.sent) file inviati, \(r.received) ricevuti.")
+                    }
                 case .failure(let e):
-                    self.error = "Salvataggio non riuscito: \(e.localizedDescription)"
+                    self.error = String(localized: "Sincronizzazione non riuscita: \(e.localizedDescription)")
                 }
                 self.endBackgroundTask()
+                if self.again {
+                    self.again = false
+                    self.syncNow(library)
+                }
             }
+        }
+    }
+
+    /// Kept for the button of older screens: a sync does both ways.
+    func backupNow(_ library: Library) { syncNow(library) }
+
+    private func apply(_ r: SyncReport, to library: Library) {
+        if r.received > 0 || !r.changed.isEmpty {
+            library.load()
+            for id in r.changed {
+                PDFCache.shared.forget(id)
+                library.refreshThumb(id)
+            }
+            Indexer.shared.catchUp(library.notebooks.filter { r.changed.contains($0.id) })
+        }
+        for id in r.removed where library.notebook(id) != nil {
+            library.delete(id)
         }
     }
 
@@ -117,152 +152,205 @@ final class CloudBackup {
         bgTask = .invalid
     }
 
-    /// Brings back every notebook of the folder that is missing here or newer there.
-    func restore(_ library: Library) {
-        guard !running, let url = resolve() else { return }
-        running = true
-        error = nil
-        Task.detached(priority: .userInitiated) {
-            let result = Self.restore(from: url)
-            await MainActor.run {
-                self.running = false
-                switch result {
-                case .success(let n):
-                    library.load()
-                    for nb in library.notebooks { PDFCache.shared.forget(nb.id); library.refreshThumb(nb.id) }
-                    Indexer.shared.catchUp(library.notebooks)
-                    self.message = n == 0 ? "Niente di nuovo da ripristinare." : "Ripristinati \(n) file."
-                case .failure(let e):
-                    self.error = "Ripristino non riuscito: \(e.localizedDescription)"
-                }
-            }
-        }
-    }
+    // MARK: File work (off the main thread)
 
-    // MARK: File copies (off the main thread)
+    struct SyncReport: Sendable {
+        var sent = 0
+        var received = 0
+        /// Notebooks whose files changed here.
+        var changed: Set<UUID> = []
+        /// Notebooks deleted on another device.
+        var removed: [UUID] = []
+    }
 
     private nonisolated static func modified(_ url: URL) -> Date {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
     }
 
-    /// Relative paths of the regular files under `dir`.
-    private nonisolated static func files(in dir: URL) -> [String] {
+    /// Relative paths of the regular files under `dir`; files only in the cloud (".name.icloud")
+    /// are listed by their real name.
+    private nonisolated static func files(in dir: URL) -> Set<String> {
         guard let e = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: [.isRegularFileKey]) else { return [] }
         let base = dir.standardizedFileURL.path
-        var out: [String] = []
+        var out: Set<String> = []
         for case let u as URL in e {
             guard (try? u.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
             let p = u.standardizedFileURL.path
             guard p.hasPrefix(base) else { continue }
-            out.append(String(p.dropFirst(base.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+            var parts = String(p.dropFirst(base.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/")).components(separatedBy: "/")
+            var name = parts.removeLast()
+            if name.hasPrefix("."), name.hasSuffix(".icloud") {
+                name = String(name.dropFirst().dropLast(".icloud".count))
+            } else if name.hasPrefix(".") || name == "source-new.pdf" {
+                continue
+            }
+            out.insert((parts + [name]).joined(separator: "/"))
         }
         return out
     }
 
-    /// Copies `src` over `dst` when `dst` is missing or older. Returns true if it copied.
-    private nonisolated static func copyIfNewer(_ src: URL, _ dst: URL) throws -> Bool {
+    /// Copies a file keeping its modification date, so the next sync sees both copies as equal.
+    private nonisolated static func copy(_ src: URL, _ dst: URL) throws {
         let fm = FileManager.default
-        if fm.fileExists(atPath: dst.path), modified(src) <= modified(dst).addingTimeInterval(1) { return false }
         try fm.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
-        try fm.copyItem(at: src, to: dst)
-        return true
+        let tmp = dst.deletingLastPathComponent().appendingPathComponent(".sync-\(UUID().uuidString)")
+        try fm.copyItem(at: src, to: tmp)
+        try? fm.setAttributes([.modificationDate: modified(src)], ofItemAtPath: tmp.path)
+        if fm.fileExists(atPath: dst.path) {
+            _ = try fm.replaceItemAt(dst, withItemAt: tmp)
+        } else {
+            try fm.moveItem(at: tmp, to: dst)
+        }
     }
 
-    private nonisolated static func mirror(to root: URL, notebooks: [UUID]) -> Result<Int, Error> {
+    /// Reads a file of the provider (downloading it if it is only in the cloud) and copies it here.
+    private nonisolated static func pull(_ remote: URL, _ local: URL) throws {
+        var failure: Error?
+        var coordError: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: remote, options: [], error: &coordError) { real in
+            do { try copy(real, local) } catch { failure = error }
+        }
+        if let e = coordError ?? failure { throw e }
+    }
+
+    /// Decodes a JSON file of the provider, downloading it first if needed.
+    private nonisolated static func readRemote<T: Decodable>(_ type: T.Type, _ url: URL) -> T? {
+        var value: T?
+        var coordError: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordError) { real in
+            value = (try? Data(contentsOf: real)).flatMap { try? Store.decoder.decode(T.self, from: $0) }
+        }
+        return value
+    }
+
+    private nonisolated static func exists(_ url: URL) -> Bool {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: url.path) { return true }
+        let placeholder = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).icloud")
+        return fm.fileExists(atPath: placeholder.path)
+    }
+
+    private nonisolated static func sync(root: URL, local: [Notebook], open: UUID?) -> Result<SyncReport, Error> {
         let ok = root.startAccessingSecurityScopedResource()
         defer { if ok { root.stopAccessingSecurityScopedResource() } }
         let fm = FileManager.default
-        var copied = 0
+        var report = SyncReport()
         var failure: Error?
         var coordError: NSError?
         NSFileCoordinator().coordinate(writingItemAt: root, options: [], error: &coordError) { base in
             do {
                 let shelf = base.appendingPathComponent("Quaderni", isDirectory: true)
                 try fm.createDirectory(at: shelf, withIntermediateDirectories: true)
-                for id in notebooks {
-                    let src = Store.dir(id), dst = shelf.appendingPathComponent(id.uuidString, isDirectory: true)
-                    let list = files(in: src)
-                    for rel in list {
-                        if try copyIfNewer(src.appendingPathComponent(rel), dst.appendingPathComponent(rel)) { copied += 1 }
-                    }
-                    // pages deleted here are deleted there too
-                    let keep = Set(list)
-                    for rel in files(in: dst) where !keep.contains(rel) && !(rel as NSString).lastPathComponent.hasPrefix(".") {
-                        try? fm.removeItem(at: dst.appendingPathComponent(rel))
-                    }
+                try fm.createDirectory(at: Store.root, withIntermediateDirectories: true)
+
+                // deletions known on either side
+                var tombs = Tombstones.load()
+                let remoteTombsURL = base.appendingPathComponent("eliminati.json")
+                if exists(remoteTombsURL), let remote = readRemote([String: Date].self, remoteTombsURL) {
+                    for (k, v) in remote where (tombs[k] ?? .distantPast) < v { tombs[k] = v }
                 }
-                // notebooks deleted here go too (never when this device has none, e.g. a fresh install)
-                if !notebooks.isEmpty {
-                    let known = Set(notebooks.map(\.uuidString))
-                    for d in (try? fm.contentsOfDirectory(at: shelf, includingPropertiesForKeys: nil)) ?? []
-                    where UUID(uuidString: d.lastPathComponent) != nil && !known.contains(d.lastPathComponent) {
-                        try? fm.removeItem(at: d)
+                Tombstones.save(tombs)
+                try Store.encoder.encode(tombs).write(to: remoteTombsURL, options: .atomic)
+
+                var ids = Set(local.map(\.id))
+                for d in (try? fm.contentsOfDirectory(at: shelf, includingPropertiesForKeys: nil)) ?? [] {
+                    if let id = UUID(uuidString: d.lastPathComponent) { ids.insert(id) }
+                }
+                let localByID = Dictionary(local.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+
+                for id in ids {
+                    let here = Store.dir(id), there = shelf.appendingPathComponent(id.uuidString, isDirectory: true)
+                    let metaThere = there.appendingPathComponent("notebook.json")
+                    let mine = localByID[id]
+                    let theirs = exists(metaThere) ? readRemote(Notebook.self, metaThere) : nil
+                    if mine == nil && theirs == nil { continue }
+
+                    // deleted somewhere after its last change: it goes everywhere
+                    if let when = tombs[id.uuidString],
+                       (mine?.modified ?? .distantPast) <= when, (theirs?.modified ?? .distantPast) <= when {
+                        try? fm.removeItem(at: there)
+                        if mine != nil { report.removed.append(id) }
+                        continue
                     }
+
+                    let pushOnly = id == open || theirs == nil
+                    let pullOnly = mine == nil
+                    // the description of the notebook comes from the side changed last
+                    let theirsWins = !pushOnly && (pullOnly || (theirs!.modified > mine!.modified.addingTimeInterval(1)))
+
+                    let hereFiles = mine == nil ? [] : files(in: here)
+                    let thereFiles = files(in: there)
+                    for rel in hereFiles.union(thereFiles) {
+                        let h = here.appendingPathComponent(rel), t = there.appendingPathComponent(rel)
+                        let inHere = hereFiles.contains(rel), inThere = thereFiles.contains(rel)
+                        var send = false, receive = false
+                        if rel == "notebook.json" {
+                            send = !theirsWins && inHere && (!inThere || mine!.modified > (theirs?.modified ?? .distantPast).addingTimeInterval(1))
+                            receive = theirsWins
+                        } else if inHere && !inThere {
+                            send = true
+                        } else if inThere && !inHere {
+                            receive = !pushOnly
+                        } else {
+                            let dh = modified(h), dt = fm.fileExists(atPath: t.path) ? modified(t) : .distantPast
+                            if dh > dt.addingTimeInterval(1) { send = true } else if dt > dh.addingTimeInterval(1) { receive = !pushOnly }
+                        }
+                        if send {
+                            try copy(h, t)
+                            report.sent += 1
+                        } else if receive {
+                            try pull(t, h)
+                            report.received += 1
+                            report.changed.insert(id)
+                        }
+                    }
+                    if !pushOnly { cleanUp(id, here: here, there: there) }
                 }
-                if fm.fileExists(atPath: Store.foldersFile.path),
-                   try copyIfNewer(Store.foldersFile, base.appendingPathComponent("cartelle.json")) {
-                    copied += 1
+
+                // folders: every folder known on either side
+                let remoteFoldersURL = base.appendingPathComponent("cartelle.json")
+                let decode = { (u: URL) in (try? Data(contentsOf: u)).flatMap { try? Store.decoder.decode([Folder].self, from: $0) } ?? [] }
+                var merged = decode(Store.foldersFile)
+                let before = merged.count
+                if exists(remoteFoldersURL) {
+                    for f in readRemote([Folder].self, remoteFoldersURL) ?? [] where !merged.contains(where: { $0.id == f.id }) { merged.append(f) }
                 }
+                let data = try Store.encoder.encode(merged)
+                if merged.count != before { try data.write(to: Store.foldersFile, options: .atomic); report.received += 1 }
+                if (try? Data(contentsOf: remoteFoldersURL)) != data { try data.write(to: remoteFoldersURL, options: .atomic) }
             } catch {
                 failure = error
             }
         }
         if let e = coordError ?? failure { return .failure(e) }
-        return .success(copied)
+        return .success(report)
     }
 
-    /// Reads a file of the provider, downloading it first if it is only in the cloud.
-    private nonisolated static func fetch(_ url: URL, into dst: URL) throws -> Bool {
-        var result: Result<Bool, Error> = .success(false)
-        var coordError: NSError?
-        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordError) { real in
-            result = Result { try copyIfNewer(real, dst) }
-        }
-        if let coordError { throw coordError }
-        return try result.get()
-    }
-
-    private nonisolated static func restore(from root: URL) -> Result<Int, Error> {
-        let ok = root.startAccessingSecurityScopedResource()
-        defer { if ok { root.stopAccessingSecurityScopedResource() } }
+    /// After a sync both copies of a notebook have the same pages: files of pages, pictures and
+    /// recordings it no longer uses are removed on both sides.
+    private nonisolated static func cleanUp(_ id: UUID, here: URL, there: URL) {
+        guard let nb = (try? Data(contentsOf: Store.meta(id))).flatMap({ try? Store.decoder.decode(Notebook.self, from: $0) }) else { return }
         let fm = FileManager.default
-        let shelf = root.appendingPathComponent("Quaderni", isDirectory: true)
-        guard fm.fileExists(atPath: shelf.path) else {
-            return .failure(NSError(domain: "Appunti", code: 1, userInfo: [NSLocalizedDescriptionKey: "nella cartella non c'è nessun salvataggio di Quaderno Appunti."]))
+        let pages = Set(nb.pages.map(\.id.uuidString))
+        var images: Set<String> = []
+        for p in nb.pages {
+            for item in Store.loadItems(id, p.id) { if let name = item.image { images.insert(name) } }
         }
-        var copied = 0
-        do {
-            try fm.createDirectory(at: Store.root, withIntermediateDirectories: true)
-            for d in (try? fm.contentsOfDirectory(at: shelf, includingPropertiesForKeys: nil)) ?? [] {
-                guard UUID(uuidString: d.lastPathComponent) != nil else { continue }
-                let dst = Store.dir(UUID(uuidString: d.lastPathComponent)!)
-                for rel in files(in: d) {
-                    // Files only in the cloud show up as ".name.icloud" until downloaded.
-                    var parts = rel.components(separatedBy: "/")
-                    var name = parts.removeLast()
-                    if name.hasPrefix("."), name.hasSuffix(".icloud") {
-                        name = String(name.dropFirst().dropLast(".icloud".count))
-                    } else if name.hasPrefix(".") {
-                        continue
-                    }
-                    let clean = (parts + [name]).joined(separator: "/")
-                    if try fetch(d.appendingPathComponent(clean), into: dst.appendingPathComponent(clean)) { copied += 1 }
+        let audio = Set((nb.recordings ?? []).map { "\($0.id.uuidString).m4a" })
+        for dir in [here, there] {
+            for rel in files(in: dir) {
+                let parts = rel.components(separatedBy: "/")
+                guard parts.count == 2 else { continue }
+                let name = parts[1]
+                var unused = false
+                switch parts[0] {
+                case "pages": unused = !pages.contains(String(name.prefix(36)))
+                case "images": unused = !images.contains(name)
+                case "audio": unused = !audio.contains(name)
+                default: break
                 }
+                if unused { try? fm.removeItem(at: dir.appendingPathComponent(rel)) }
             }
-            let remoteFolders = root.appendingPathComponent("cartelle.json")
-            if fm.fileExists(atPath: remoteFolders.path) || fm.fileExists(atPath: root.appendingPathComponent(".cartelle.json.icloud").path) {
-                let tmp = fm.temporaryDirectory.appendingPathComponent("cartelle-remote.json")
-                try? fm.removeItem(at: tmp)
-                _ = try fetch(remoteFolders, into: tmp)
-                let decode = { (u: URL) in (try? Data(contentsOf: u)).flatMap { try? Store.decoder.decode([Folder].self, from: $0) } ?? [] }
-                var merged = decode(Store.foldersFile)
-                for f in decode(tmp) where !merged.contains(where: { $0.id == f.id }) { merged.append(f) }
-                try Store.encoder.encode(merged).write(to: Store.foldersFile, options: .atomic)
-            }
-        } catch {
-            return .failure(error)
         }
-        return .success(copied)
     }
 }

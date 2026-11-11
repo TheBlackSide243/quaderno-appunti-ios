@@ -5,9 +5,11 @@ import UIKit
 /// text boxes and pictures in a layer above it.
 @MainActor
 final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDelegate, UIPencilInteractionDelegate {
-    let canvas = PKCanvasView()
+    let canvas = LinkAwareCanvas()
     private let paper = UIImageView()
     let items = ItemsLayer()
+    /// The link buttons of the boxes, above everything and usable with any tool.
+    private let links = LinkLayer()
 
     private(set) var notebook: Notebook?
     private(set) var page: PageInfo?
@@ -28,6 +30,10 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     var onPull: ((Int) -> Void)?
     /// Called on a double tap on the side of the Apple Pencil.
     var onPencilTap: (() -> Void)?
+    /// Called when a link button is tapped, with the page it leads to.
+    var onLink: ((UUID) -> Void)?
+    /// Called on a tap while listening, with when the touched stroke was written (nil = no stroke there).
+    var onInkTap: ((Date?) -> Void)?
 
     /// What pulling past the top and the bottom of the page does; nil = nothing there.
     var pullLabels: (previous: String?, next: String?) = (nil, nil)
@@ -52,6 +58,22 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     private let shapePan = UIPanGestureRecognizer()
     private let shapeLayer = CAShapeLayer()
     private var shapeStart = CGPoint.zero
+
+    /// The laser pointer: a glowing trail that fades by itself and is never saved.
+    var laser = false {
+        didSet { applyMode() }
+    }
+    private let laserPan = UIPanGestureRecognizer()
+    private let laserGlow = CAShapeLayer()
+    private let laserCore = CAShapeLayer()
+    private var laserPoints: [(p: CGPoint, t: CFTimeInterval, start: Bool)] = []
+    private var laserLink: CADisplayLink?
+
+    /// Listening to a recording: a tap on the writing plays what was said while it was written.
+    var listenMode = false {
+        didSet { applyMode() }
+    }
+    private let listenTap = UITapGestureRecognizer()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -81,6 +103,38 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         items.onChange = { [weak self] in self?.itemsChanged() }
         items.onSelection = { [weak self] item in self?.onSelection?(item) }
         canvas.addSubview(items)
+
+        links.layer.anchorPoint = .zero
+        links.onTap = { [weak self] page in self?.onLink?(page) }
+        canvas.addSubview(links)
+        canvas.blocksDrawing = { [weak self] p in
+            guard let self else { return false }
+            return self.links.button(at: self.canvas.convert(p, to: self.links)) != nil
+        }
+
+        for l in [laserGlow, laserCore] {
+            l.fillColor = nil
+            l.lineCap = .round
+            l.lineJoin = .round
+            l.zPosition = 11
+            items.layer.addSublayer(l)
+        }
+        laserGlow.strokeColor = UIColor(red: 1, green: 0.18, blue: 0.12, alpha: 0.45).cgColor
+        laserGlow.shadowColor = UIColor(red: 1, green: 0.1, blue: 0.05, alpha: 1).cgColor
+        laserGlow.shadowOpacity = 0.9
+        laserGlow.shadowRadius = 6
+        laserGlow.shadowOffset = .zero
+        laserCore.strokeColor = UIColor(red: 1, green: 0.55, blue: 0.5, alpha: 1).cgColor
+
+        laserPan.addTarget(self, action: #selector(laserDragged))
+        laserPan.maximumNumberOfTouches = 1
+        laserPan.delegate = self
+        laserPan.isEnabled = false
+        canvas.addGestureRecognizer(laserPan)
+
+        listenTap.addTarget(self, action: #selector(listenTapped))
+        listenTap.isEnabled = false
+        canvas.addGestureRecognizer(listenTap)
 
         shapeLayer.fillColor = nil
         shapeLayer.lineCap = .round
@@ -147,7 +201,12 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         paper.bounds = CGRect(origin: .zero, size: pg.size)
         items.bounds = CGRect(origin: .zero, size: pg.size)
         items.load(nb, Store.loadItems(nb.id, pg.id))
+        links.bounds = CGRect(origin: .zero, size: pg.size)
+        links.update(items.items, zoom: canvas.zoomScale)
         shapeLayer.path = nil
+        laserPoints = []
+        laserCore.path = nil
+        laserGlow.path = nil
         paperScale = 0
         fittedWidth = 0
         setNeedsLayout()
@@ -195,7 +254,10 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         onSaved?(pg)
     }
 
-    private func itemsChanged() { scheduleSave() }
+    private func itemsChanged() {
+        links.update(items.items, zoom: canvas.zoomScale)
+        scheduleSave()
+    }
 
     // MARK: Layout and zoom
 
@@ -220,6 +282,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
             canvas.contentOffset = CGPoint(x: -canvas.contentInset.left, y: -canvas.contentInset.top)
         }
         canvas.bringSubviewToFront(items)
+        canvas.bringSubviewToFront(links)
         canvas.sendSubviewToBack(paper)
         multiplyInk()
     }
@@ -227,7 +290,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     /// Ink is laid on the paper like on real paper: multiplied, so a highlighter tints the white
     /// but the black text of a PDF stays black under it instead of being covered.
     private func multiplyInk() {
-        for v in canvas.subviews where v !== paper && v !== items && v.layer.compositingFilter == nil {
+        for v in canvas.subviews where v !== paper && v !== items && v !== links && v.layer.compositingFilter == nil {
             v.layer.compositingFilter = "multiplyBlendMode"
         }
     }
@@ -243,6 +306,9 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         paper.layer.position = .zero
         items.transform = t
         items.layer.position = .zero
+        links.transform = t
+        links.layer.position = .zero
+        links.update(items.items, zoom: z)
         let dx = max(0, (bounds.width - size.width) / 2)
         let dy = max(12, (bounds.height - size.height) / 2)
         canvas.contentInset = UIEdgeInsets(top: dy, left: dx, bottom: max(64, dy), right: dx)
@@ -312,8 +378,10 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     // MARK: Modes
 
     private func applyMode() {
-        canvas.drawingGestureRecognizer.isEnabled = drawMode && shape == nil
-        shapePan.isEnabled = drawMode && shape != nil
+        canvas.drawingGestureRecognizer.isEnabled = drawMode && shape == nil && !laser && !listenMode
+        shapePan.isEnabled = drawMode && shape != nil && !laser && !listenMode
+        laserPan.isEnabled = drawMode && laser && !listenMode
+        listenTap.isEnabled = listenMode
         updateShapeTouches()
         items.isUserInteractionEnabled = !drawMode
         if !drawMode { items.select(nil) }
@@ -361,9 +429,99 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         shapePan.allowedTouchTypes = types
     }
 
-    /// The page must not scroll while a shape is being dragged.
+    /// The page must not scroll while a shape is being drawn or the laser is moving.
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
-        g === shapePan && other === canvas.panGestureRecognizer
+        (g === shapePan || g === laserPan) && other === canvas.panGestureRecognizer
+    }
+
+    /// Shapes and the laser do not start on a link button.
+    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        if g === shapePan || g === laserPan {
+            return links.button(at: g.location(in: links)) == nil
+        }
+        return super.gestureRecognizerShouldBegin(g)
+    }
+
+    // MARK: Laser
+
+    @objc private func laserDragged(_ g: UIPanGestureRecognizer) {
+        let p = g.location(in: items)
+        let now = CACurrentMediaTime()
+        switch g.state {
+        case .began:
+            let t = g.translation(in: items)
+            laserPoints.append((CGPoint(x: p.x - t.x, y: p.y - t.y), now, true))
+            laserPoints.append((p, now, false))
+            startLaser()
+        case .changed:
+            laserPoints.append((p, now, false))
+        default:
+            break
+        }
+    }
+
+    private func startLaser() {
+        guard laserLink == nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(laserTick))
+        link.add(to: .main, forMode: .common)
+        laserLink = link
+    }
+
+    @objc private func laserTick() {
+        let now = CACurrentMediaTime()
+        let life: CFTimeInterval = 0.7
+        // drop the old end of the trail, keeping a start marker on what remains
+        while let first = laserPoints.first, now - first.t > life {
+            laserPoints.removeFirst()
+            if !first.start, let next = laserPoints.first, !next.start { laserPoints[0].start = true }
+        }
+        let z = max(0.05, canvas.zoomScale)
+        let path = UIBezierPath()
+        for pt in laserPoints {
+            if pt.start || path.isEmpty { path.move(to: pt.p) } else { path.addLine(to: pt.p) }
+        }
+        if let last = laserPoints.last {
+            // the dot at the tip
+            let r = 4.5 / z
+            path.move(to: CGPoint(x: last.p.x + r, y: last.p.y))
+            path.addArc(withCenter: last.p, radius: r, startAngle: 0, endAngle: .pi * 2, clockwise: true)
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        laserGlow.lineWidth = 9 / z
+        laserCore.lineWidth = 3.5 / z
+        laserGlow.path = path.cgPath
+        laserCore.path = path.cgPath
+        CATransaction.commit()
+        let active = laserPan.state == .began || laserPan.state == .changed
+        if laserPoints.isEmpty && !active {
+            laserLink?.invalidate()
+            laserLink = nil
+            laserGlow.path = nil
+            laserCore.path = nil
+        }
+    }
+
+    // MARK: Listening
+
+    @objc private func listenTapped(_ g: UITapGestureRecognizer) {
+        let p = g.location(in: items)
+        onInkTap?(strokeDate(at: p))
+    }
+
+    /// When the stroke under a point was written: the closest stroke within a finger's reach.
+    func strokeDate(at p: CGPoint) -> Date? {
+        let reach: CGFloat = 16 / max(0.3, min(2, canvas.zoomScale))
+        var best: (d: CGFloat, date: Date)?
+        for s in canvas.drawing.strokes.reversed() {
+            guard s.renderBounds.insetBy(dx: -reach, dy: -reach).contains(p) else { continue }
+            for pt in s.path.interpolatedPoints(by: .distance(3)) {
+                let q = pt.location.applying(s.transform)
+                let d = hypot(q.x - p.x, q.y - p.y)
+                if d < reach, d < (best?.d ?? .infinity) { best = (d, s.path.creationDate) }
+            }
+        }
+        return best?.date
     }
 
     private func clamped(_ p: CGPoint) -> CGPoint {
@@ -481,5 +639,82 @@ final class PaddedLabel: UILabel {
 
     override func drawText(in rect: CGRect) {
         super.drawText(in: rect.insetBy(dx: 14, dy: 7))
+    }
+}
+
+/// The PencilKit canvas, which does not start a stroke on a link button so the button gets the tap.
+final class LinkAwareCanvas: PKCanvasView {
+    var blocksDrawing: ((CGPoint) -> Bool)?
+
+    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        if g === drawingGestureRecognizer, blocksDrawing?(g.location(in: self)) == true { return false }
+        return super.gestureRecognizerShouldBegin(g)
+    }
+}
+
+/// Round buttons on the corner of the boxes that link to a page. They keep the same size on
+/// screen at any zoom and only they take touches.
+@MainActor
+final class LinkLayer: UIView {
+    var onTap: ((UUID) -> Void)?
+    private var buttons: [UUID: UIButton] = [:]
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        button(at: point)
+    }
+
+    func button(at p: CGPoint) -> UIButton? {
+        buttons.values.first { !$0.isHidden && $0.frame.insetBy(dx: -6, dy: -6).contains(p) }
+    }
+
+    func update(_ items: [PageItem], zoom: CGFloat) {
+        let z = zoom.isFinite && zoom > 0 ? zoom : 1
+        let linked = items.filter { $0.link != nil }
+        let keep = Set(linked.map(\.id))
+        for (id, b) in buttons where !keep.contains(id) {
+            b.removeFromSuperview()
+            buttons[id] = nil
+        }
+        for item in linked {
+            let b = buttons[item.id] ?? makeButton(item.id)
+            b.accessibilityValue = item.text
+            b.tag = 0
+            b.transform = CGAffineTransform(scaleX: 1 / z, y: 1 / z)
+            // on the right end of the box, vertically centred on its first line
+            let side: CGFloat = 30
+            b.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+            b.center = CGPoint(x: item.frame.maxX + side / (2 * z), y: item.frame.minY + min(item.frame.height, 34) / 2)
+            linkTargets[item.id] = item.link
+        }
+    }
+
+    private var linkTargets: [UUID: UUID] = [:]
+
+    private func makeButton(_ id: UUID) -> UIButton {
+        var conf = UIButton.Configuration.filled()
+        conf.image = UIImage(systemName: "arrow.forward", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .bold))
+        conf.baseBackgroundColor = UIColor(Theme.accent)
+        conf.baseForegroundColor = UIColor(Theme.bg)
+        conf.cornerStyle = .capsule
+        let b = UIButton(configuration: conf)
+        b.accessibilityLabel = String(localized: "Vai alla pagina collegata")
+        b.addAction(UIAction { [weak self] _ in
+            guard let self, let target = self.linkTargets[id] else { return }
+            self.onTap?(target)
+        }, for: .touchUpInside)
+        b.layer.shadowColor = UIColor.black.cgColor
+        b.layer.shadowOpacity = 0.3
+        b.layer.shadowRadius = 2
+        b.layer.shadowOffset = CGSize(width: 0, height: 1)
+        addSubview(b)
+        buttons[id] = b
+        return b
     }
 }

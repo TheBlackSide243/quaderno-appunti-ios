@@ -38,7 +38,7 @@ struct EditorView: View {
         dialogs
             .onChange(of: phase) { _, p in
                 if p != .active { model.canvas.saveNow() }
-                if p == .background { backup.backupIfAuto(model.library) }
+                if p == .background { backup.backupIfAuto(model.library, open: model.notebook.id) }
             }
             .task { await runDemo() }
             .onDisappear {
@@ -55,21 +55,49 @@ struct EditorView: View {
             ZStack(alignment: .bottom) {
                 CanvasHost(view: model.canvas)
                     .ignoresSafeArea(edges: .bottom)
-                if let item = model.selected, !model.drawMode {
-                    ItemBar(item: item, model: model)
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 12)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else if !regular {
-                    PageNav(model: model, onPages: { showPages = true })
-                        .padding(.bottom, 10)
+                VStack(spacing: 10) {
+                    if model.audio.panel || model.audio.recording {
+                        AudioBar(model: model, onShare: { share = ShareFile(url: $0) })
+                            .padding(.horizontal, 12)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    if let item = model.selected, !model.drawMode {
+                        ItemBar(item: item, model: model)
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 2)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else if !regular {
+                        PageNav(model: model, onPages: { showPages = true })
+                    }
                 }
-                ErrorBanner(error: $error).padding(12).frame(maxHeight: .infinity, alignment: .top)
+                .padding(.bottom, 10)
+                VStack(spacing: 8) {
+                    ErrorBanner(error: $error)
+                    if model.audio.listening {
+                        Label("Tocca una parola scritta per sentire cosa si diceva", systemImage: "hand.tap")
+                            .font(.footnote.weight(.semibold)).foregroundStyle(Theme.bg)
+                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .background(Theme.accent, in: Capsule())
+                    }
+                    if let n = model.notice {
+                        Text(n).font(.footnote.weight(.semibold)).foregroundStyle(Theme.text)
+                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
+                            .task(id: n) {
+                                try? await Task.sleep(for: .seconds(2.5))
+                                if model.notice == n { model.notice = nil }
+                            }
+                    }
+                }
+                .padding(12).frame(maxHeight: .infinity, alignment: .top)
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 ToolStrip(model: model, onPhoto: { showPhotos = true })
             }
             .animation(.easeOut(duration: 0.18), value: model.selected?.id)
+            .animation(.easeOut(duration: 0.18), value: model.audio.panel)
+            .animation(.easeOut(duration: 0.18), value: model.notice)
             .background(Theme.desk)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbar }
@@ -250,6 +278,7 @@ struct EditorView: View {
                 Button { showScanner = true } label: { Label("Scansiona pagine", systemImage: "doc.viewfinder") }
             }
             Button { showPDFPicker = true } label: { Label("Pagine da un PDF", systemImage: "doc.richtext") }
+            Button { model.audio.panel = true } label: { Label("Registrazione audio", systemImage: "waveform") }
         }
         Section("Pagina") {
             Button { model.toggleBookmark(model.pageIndex) } label: {
@@ -278,6 +307,9 @@ struct EditorView: View {
             Button(role: .destructive) { confirmClear = true } label: { Label("Cancella inchiostro", systemImage: "eraser") }
         }
         Section("Quaderno") {
+            Button { model.insertContents() } label: {
+                Label(model.bookmarkCount > 0 ? "Inserisci indice dei segnalibri" : "Inserisci indice", systemImage: "list.bullet.rectangle")
+            }
             Button { showSearch = true } label: { Label("Cerca nel quaderno", systemImage: "magnifyingglass") }
             Button { showPages = true } label: { Label("Tutte le pagine", systemImage: "square.grid.2x2") }
         }

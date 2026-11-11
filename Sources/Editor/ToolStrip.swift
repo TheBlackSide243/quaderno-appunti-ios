@@ -16,6 +16,9 @@ struct ToolStrip: View {
                 toolButton("textformat", label: "Testo", on: false) { model.addText() }
                 toolButton("photo", label: "Foto", on: false) { onPhoto() }
                 toolButton("ruler", label: "Righello", on: model.ruler) { model.toggleRuler() }
+                toolButton("waveform", label: "Registrazione audio", on: model.audio.panel || model.audio.recording) {
+                    model.audio.panel.toggle()
+                }
                 if model.tool == .shape {
                     separator
                     ForEach(ShapeKind.allCases) { k in

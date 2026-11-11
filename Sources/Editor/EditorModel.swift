@@ -5,7 +5,7 @@ import UIKit
 
 /// The tools of the editor toolbar.
 enum Tool: String, CaseIterable, Codable, Identifiable {
-    case pen, pencil, highlighter, eraser, shape, lasso, hand
+    case pen, pencil, highlighter, eraser, shape, lasso, hand, laser
     var id: String { rawValue }
 
     var label: String {
@@ -17,6 +17,7 @@ enum Tool: String, CaseIterable, Codable, Identifiable {
         case .shape: "Forme"
         case .lasso: "Lazo"
         case .hand: "Sposta testi e foto"
+        case .laser: "Puntatore laser"
         }
     }
 
@@ -29,6 +30,7 @@ enum Tool: String, CaseIterable, Codable, Identifiable {
         case .shape: "square.on.circle"
         case .lasso: "lasso"
         case .hand: "hand.point.up.left"
+        case .laser: "cursorarrow.rays"
         }
     }
 
@@ -40,7 +42,7 @@ enum Tool: String, CaseIterable, Codable, Identifiable {
         case .highlighter: [12, 20, 30]
         case .eraser: [0, 10, 30]
         case .shape: [1.5, 3, 5]
-        case .lasso, .hand: []
+        case .lasso, .hand, .laser: []
         }
     }
 
@@ -95,13 +97,17 @@ final class EditorModel {
     @ObservationIgnored private var toolBeforeEraser: Tool = .pen
     /// Bumped when a page's picture changes, so the page grid reloads it.
     var pageVersion: [UUID: Int] = [:]
+    /// A short message shown over the page (link to a deleted page, nothing recorded there…).
+    var notice: String?
 
     @ObservationIgnored let canvas = PageCanvasView()
+    let audio: AudioNotes
 
     init(library: Library, notebook: Notebook, page: Int?) {
         self.library = library
         self.notebook = notebook
         self.pageIndex = min(max(0, page ?? notebook.lastPage), max(0, notebook.pages.count - 1))
+        self.audio = AudioNotes(notebookID: notebook.id)
         if UserDefaults.standard.object(forKey: "fingerDraws") != nil {
             fingerDraws = UserDefaults.standard.bool(forKey: "fingerDraws")
         } else {
@@ -120,6 +126,10 @@ final class EditorModel {
         }
         canvas.onPull = { [weak self] direction in self?.pulled(direction) }
         canvas.onPencilTap = { [weak self] in self?.toggleEraser() }
+        canvas.onLink = { [weak self] page in self?.follow(page) }
+        canvas.onInkTap = { [weak self] date in self?.playFrom(date) }
+        audio.onSaved = { [weak self] rec in self?.recordingSaved(rec) }
+        audio.onListenChange = { [weak self] on in self?.canvas.listenMode = on }
         showPage()
         if tools.tool == .hand { tools.tool = .pen }
         applyTool()
@@ -154,6 +164,7 @@ final class EditorModel {
     }
 
     func close() {
+        audio.stopAll()
         canvas.saveNow()
         notebook.lastPage = pageIndex
         library.save(notebook, touch: false)
@@ -207,6 +218,8 @@ final class EditorModel {
 
     private func applyTool() {
         let t = tool
+        canvas.laser = t == .laser
+        if audio.listening { audio.listening = false }
         if t == .hand {
             setDrawMode(false)
             return
@@ -221,7 +234,7 @@ final class EditorModel {
         case .highlighter: canvas.setTool(PKInkingTool(.marker, color: c, width: w))
         case .eraser: canvas.setTool(w == 0 ? PKEraserTool(.vector) : PKEraserTool(.bitmap, width: w))
         case .lasso: canvas.setTool(PKLassoTool())
-        case .shape, .hand: break
+        case .shape, .hand, .laser: break
         }
     }
 
@@ -414,6 +427,107 @@ final class EditorModel {
 
     func update(_ change: (inout PageItem) -> Void) { canvas.updateSelected(change) }
     func deleteSelected() { canvas.deleteSelected() }
+
+    // MARK: Links
+
+    /// Opens the page a link leads to.
+    func follow(_ pageID: UUID) {
+        guard let i = notebook.pages.firstIndex(where: { $0.id == pageID }) else {
+            notice = String(localized: "La pagina collegata non c'è più.")
+            return
+        }
+        go(to: i)
+    }
+
+    /// Links the selected box to a page (nil removes the link).
+    func link(to pageID: UUID?) {
+        update { $0.link = pageID }
+    }
+
+    /// A short name for each page, for the table of contents: its number and its first line.
+    func pageNames() -> [String] {
+        let texts = Indexer.storedTexts(notebook.id)
+        return notebook.pages.enumerated().map { i, pg in
+            let n = String(localized: "Pagina \(i + 1)")
+            let first = (texts[pg.id.uuidString]?.all ?? "").split(whereSeparator: \.isNewline)
+                .map { $0.trimmingCharacters(in: .whitespaces) }.first { $0.count > 1 }
+            guard let first else { return n }
+            return n + " · " + String(first.prefix(40))
+        }
+    }
+
+    /// Adds pages after the current one with the list of the bookmarked pages (or of every page),
+    /// each line a link to its page.
+    func insertContents() {
+        canvas.saveNow()
+        let marked = notebook.pages.indices.filter { notebook.pages[$0].isBookmarked }
+        let names = pageNames()
+        let entries = (marked.isEmpty ? Array(notebook.pages.indices) : marked).map { (notebook.pages[$0].id, names[$0]) }
+        let size = PageFormat.a4Portrait.size
+        let lineH: CGFloat = 30, top: CGFloat = 112
+        let perPage = max(1, Int((size.height - top - 40) / lineH))
+        var at = pageIndex + 1
+        let first = at
+        var chunk = 0
+        repeat {
+            let pg = PageInfo(template: .blank, size: size)
+            var items: [PageItem] = []
+            var title = PageItem(kind: .text, x: 56, y: 44, w: Double(size.width - 112), h: 44)
+            title.text = chunk == 0 ? String(localized: "Indice") : String(localized: "Indice (continua)")
+            title.fontSize = 28
+            title.bold = true
+            items.append(title)
+            let slice = entries.dropFirst(chunk * perPage).prefix(perPage)
+            for (n, e) in slice.enumerated() {
+                var line = PageItem(kind: .text, x: 56, y: Double(top + CGFloat(n) * lineH), w: Double(size.width - 150), h: 28)
+                line.text = e.1
+                line.fontSize = 16
+                line.color = "1D4ED8"
+                line.link = e.0
+                items.append(line)
+            }
+            Store.saveItems(items, notebook.id, pg.id)
+            notebook.pages.insert(pg, at: at)
+            at += 1
+            chunk += 1
+        } while chunk * perPage < entries.count
+        library.save(notebook)
+        for p in notebook.pages[first..<at] { Indexer.shared.schedule(notebook, page: p.id) }
+        pageIndex = first
+        showPage()
+    }
+
+    // MARK: Audio
+
+    var recordings: [Recording] { notebook.recordings ?? [] }
+
+    private func recordingSaved(_ rec: Recording) {
+        var list = recordings
+        list.append(rec)
+        notebook.recordings = list
+        library.save(notebook)
+    }
+
+    func deleteRecording(_ rec: Recording) {
+        audio.forget(rec)
+        try? FileManager.default.removeItem(at: Store.audio(notebook.id, rec.id))
+        notebook.recordings = recordings.filter { $0.id != rec.id }
+        if notebook.recordings?.isEmpty == true { notebook.recordings = nil }
+        library.save(notebook)
+    }
+
+    /// A tap on the writing while listening: plays what was recorded when that stroke was written.
+    private func playFrom(_ date: Date?) {
+        guard let date else {
+            notice = String(localized: "Tocca un tratto scritto a mano.")
+            return
+        }
+        guard let rec = recordings.last(where: { $0.start.addingTimeInterval(-1) <= date && date <= $0.end.addingTimeInterval(1) }) else {
+            notice = String(localized: "Mentre scrivevi questo non stavi registrando.")
+            return
+        }
+        audio.play(rec, at: max(0, date.timeIntervalSince(rec.start) - 2))
+    }
 
     // MARK: Export
 

@@ -28,6 +28,29 @@ struct ItemBar: View {
                     .font(.caption).foregroundStyle(Theme.sub).lineLimit(2)
             }
             Spacer(minLength: 4)
+            Menu {
+                if item.link != nil {
+                    Button(role: .destructive) { model.link(to: nil) } label: { Label("Togli il collegamento", systemImage: "xmark") }
+                }
+                Section("Collega a una pagina") {
+                    ForEach(model.notebook.pages.indices, id: \.self) { i in
+                        let pg = model.notebook.pages[i]
+                        Button { model.link(to: pg.id) } label: {
+                            if item.link == pg.id {
+                                Label("Pagina \(i + 1)", systemImage: "checkmark")
+                            } else if pg.isBookmarked {
+                                Label("Pagina \(i + 1)", systemImage: "bookmark.fill")
+                            } else {
+                                Text("Pagina \(i + 1)")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: item.link == nil ? "link" : "link.circle.fill")
+                    .foregroundStyle(item.link == nil ? Theme.text : Theme.accent)
+            }
+            .accessibilityLabel("Collegamento")
             Button { model.canvas.bringSelectedToFront() } label: { Image(systemName: "square.3.layers.3d.top.filled") }
             Button(role: .destructive) { model.deleteSelected() } label: { Image(systemName: "trash").foregroundStyle(Theme.bad) }
         }

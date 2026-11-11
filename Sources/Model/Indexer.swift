@@ -64,6 +64,7 @@ final class Indexer: @unchecked Sendable {
                 i[page.id.uuidString] = t
             }
             self.store(nb.id, i)
+            Spotlight.shared.schedule(nb)
         }
     }
 
@@ -133,7 +134,13 @@ final class Indexer: @unchecked Sendable {
                 i[pid.uuidString] = t
             }
             store(id, i)
+            Spotlight.shared.schedule(nb)
         }
+    }
+
+    /// The text last read on every page of a notebook, from the saved index (no reading now).
+    static func storedTexts(_ nb: UUID) -> [String: PageText] {
+        (try? Data(contentsOf: Store.index(nb))).flatMap { try? Store.decoder.decode([String: PageText].self, from: $0) } ?? [:]
     }
 
     /// Handwriting recognition of the ink alone, drawn black on white.

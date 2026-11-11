@@ -8,41 +8,35 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     var onIntro: (() -> Void)?
     @State private var picking = false
-    @State private var confirmRestore = false
+    @State private var spotlight = Spotlight.enabled
 
     var body: some View {
         @Bindable var backup = backup
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    Panel("iCloud Drive") {
+                    Panel("Sincronizzazione con iCloud Drive") {
                         HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: "icloud.fill").font(.title2).foregroundStyle(Theme.accent)
-                            Text("Scegli una cartella in iCloud Drive (per esempio una nuova cartella «Quaderno Appunti»): l'app ci copia i quaderni e iCloud li carica. Da un altro iPhone o iPad scegli la stessa cartella e tocca Ripristina.")
+                            Image(systemName: "arrow.triangle.2.circlepath.icloud.fill").font(.title2).foregroundStyle(Theme.accent)
+                            Text("Scegli una cartella in iCloud Drive (per esempio una nuova cartella «Quaderno Appunti») e la stessa cartella sugli altri iPhone e iPad: i quaderni restano uguali su tutti. Le modifiche più recenti vincono, i quaderni eliminati spariscono anche dagli altri.")
                                 .font(.footnote).foregroundStyle(Theme.sub)
                         }
                         if backup.configured {
                             InfoRow("Cartella", backup.folderName ?? "")
-                            InfoRow("Ultimo salvataggio", backup.lastBackup.map { $0.formatted(.relative(presentation: .named)) } ?? "mai")
-                            Toggle("Salva automaticamente", isOn: $backup.auto)
+                            InfoRow("Ultima sincronizzazione", backup.lastBackup.map { $0.formatted(.relative(presentation: .named)) } ?? String(localized: "mai"))
+                            Toggle("Sincronizza automaticamente", isOn: $backup.auto)
                                 .tint(Theme.accent)
                                 .font(.subheadline)
-                            Text("Dopo aver chiuso un quaderno e quando l'app va in secondo piano.")
+                            Text("Quando apri l'app, dopo aver chiuso un quaderno e quando l'app va in secondo piano.")
                                 .font(.caption).foregroundStyle(Theme.sub)
-                            HStack(spacing: 10) {
-                                Button {
-                                    backup.backupNow(library)
-                                } label: {
-                                    Label(backup.running ? "Salvataggio…" : "Salva adesso", systemImage: "icloud.and.arrow.up")
-                                }
-                                .buttonStyle(PrimaryButtonStyle())
-                                .disabled(backup.running)
-                                Button { confirmRestore = true } label: {
-                                    Label("Ripristina", systemImage: "icloud.and.arrow.down")
-                                }
-                                .buttonStyle(SecondaryButtonStyle())
-                                .disabled(backup.running)
+                            Button {
+                                backup.syncNow(library)
+                            } label: {
+                                Label(backup.running ? "Sincronizzazione…" : "Sincronizza adesso", systemImage: "arrow.triangle.2.circlepath")
+                                    .frame(maxWidth: .infinity)
                             }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .disabled(backup.running)
                             if backup.running { ProgressView().frame(maxWidth: .infinity) }
                             if let m = backup.message {
                                 Label(m, systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(Theme.good)
@@ -60,6 +54,17 @@ struct SettingsView: View {
                             .buttonStyle(PrimaryButtonStyle())
                         }
                         ErrorBanner(error: $backup.error)
+                    }
+                    Panel("Ricerca dell'iPhone") {
+                        Toggle("Mostra i quaderni in Spotlight", isOn: $spotlight)
+                            .tint(Theme.accent)
+                            .font(.subheadline)
+                            .onChange(of: spotlight) { _, on in
+                                Spotlight.enabled = on
+                                if on { Spotlight.shared.reindexAll(library.notebooks) } else { Spotlight.shared.removeAll() }
+                            }
+                        Text("Scorri giù nella schermata Home e scrivi una parola: trovi i quaderni e le pagine dove l'hai scritta, anche a mano. Tutto resta sul dispositivo.")
+                            .font(.caption).foregroundStyle(Theme.sub)
                     }
                     Panel("Sul dispositivo") {
                         InfoRow("Quaderni", "\(library.notebooks.count)")
@@ -101,12 +106,8 @@ struct SettingsView: View {
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
             if case let .success(url) = result {
                 backup.choose(url)
-                if backup.configured, !library.notebooks.isEmpty { backup.backupNow(library) }
+                if backup.configured { backup.syncNow(library) }
             }
-        }
-        .confirmationDialog("Ripristinare da «\(backup.folderName ?? "")»? I quaderni che mancano qui vengono aggiunti e quelli più recenti nella cartella sostituiscono quelli di questo dispositivo.",
-                            isPresented: $confirmRestore, titleVisibility: .visible) {
-            Button("Ripristina") { backup.restore(library) }
         }
         .preferredColorScheme(.dark)
     }

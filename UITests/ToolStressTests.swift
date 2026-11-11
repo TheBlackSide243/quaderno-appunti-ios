@@ -3,7 +3,7 @@ import XCTest
 /// Does what crashed the app on a tester's iPhone Duo: changing tool many times and using the
 /// lasso on a page with ink. A crash ends the test, and the workflow keeps the crash report.
 final class ToolStressTests: XCTestCase {
-    private let tools = ["Penna", "Matita", "Evidenziatore", "Gomma", "Forme", "Lazo", "Sposta testi e foto"]
+    private let tools = ["Penna", "Matita", "Evidenziatore", "Gomma", "Forme", "Lazo", "Sposta testi e foto", "Puntatore laser"]
 
     override func setUp() {
         continueAfterFailure = false
@@ -91,5 +91,30 @@ final class ToolStressTests: XCTestCase {
             }
             alive(app, "round \(round): all tools after the lasso")
         }
+    }
+
+    /// The Text button switches to moving boxes without going through the tool buttons: it
+    /// crashed 0.3.2 on a tester's phone (the same happened adding a photo).
+    func testTextButtonAfterEveryTool() {
+        let app = launch("editor")
+        for t in tools {
+            tapTool(app, t)
+            tapTool(app, "Testo")
+            alive(app, "Testo after \(t)")
+            point(app, 0.5, 0.9).tap()
+        }
+    }
+
+    /// The laser, the audio bar and listening do not end the app.
+    func testLaserAndAudioBar() {
+        let app = launch("editor")
+        tapTool(app, "Puntatore laser")
+        drag(app, from: (0.2, 0.4), to: (0.8, 0.6))
+        alive(app, "laser")
+        tapTool(app, "Registrazione audio")
+        alive(app, "audio bar")
+        tapTool(app, "Penna")
+        drag(app, from: (0.3, 0.5), to: (0.6, 0.55))
+        alive(app, "pen after the laser")
     }
 }

@@ -1,3 +1,4 @@
+import CoreSpotlight
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
@@ -69,11 +70,30 @@ struct LibraryView: View {
             if let nb = library.importPDF(url, folder: nil) { router.open = OpenRequest(notebookID: nb.id) }
             try? FileManager.default.removeItem(at: url)
         }
-        .onChange(of: phase) { _, p in if p == .background { backup.backupIfAuto(library) } }
+        .onContinueUserActivity(CSSearchableItemActionType) { activity in
+            // a result of the iPhone's search: open the notebook at that page
+            guard let id = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
+                  let target = Spotlight.target(id), let nb = library.notebook(target.notebook) else { return }
+            let page = target.page.flatMap { pid in nb.pages.firstIndex { $0.id == pid } }
+            let req = OpenRequest(notebookID: nb.id, page: page)
+            router.showSearch = false
+            router.showSettings = false
+            if router.open != nil {
+                router.open = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { router.open = req }
+            } else {
+                router.open = req
+            }
+        }
+        .onChange(of: phase) { _, p in
+            if p == .background { backup.backupIfAuto(library, open: router.open?.notebookID) }
+            if p == .active { backup.backupIfAuto(library, open: router.open?.notebookID) }
+        }
         .task {
             if !introSeen && !Demo.enabled { router.showIntro = true }
             Demo.seedIfNeeded(library)
             Indexer.shared.catchUp(library.notebooks)
+            Spotlight.shared.reindexAll(library.notebooks)
             await Demo.route(library: library, router: router)
         }
     }
@@ -103,19 +123,35 @@ struct ShelfView: View {
     @State private var share: ShareFile?
     @State private var busy = false
     @State private var showScanner = false
+    @State private var tagFilter: String?
+    @State private var tagTarget: Notebook?
+    @State private var askTag = false
+    @State private var tagName = ""
+    @State private var renamingTag: String?
+    @State private var confirmDeleteTag: String?
 
     private var sort: SortOrder { SortOrder(rawValue: sortRaw) ?? .date }
     private var regular: Bool { hSize == .regular }
 
-    private var notebooks: [Notebook] { library.notebooks(in: folder, order: sort, favoritesOnly: favoritesOnly) }
+    /// The label chosen above the shelf, if it still exists.
+    private var activeTag: String? {
+        guard let t = tagFilter, library.allTags.contains(t) else { return nil }
+        return t
+    }
+
+    private var notebooks: [Notebook] {
+        if let t = activeTag { return library.notebooks(tagged: t, order: sort, favoritesOnly: favoritesOnly) }
+        return library.notebooks(in: folder, order: sort, favoritesOnly: favoritesOnly)
+    }
 
     private var folders: [Folder] {
-        guard folder == nil, !favoritesOnly else { return [] }
+        guard folder == nil, !favoritesOnly, activeTag == nil else { return [] }
         return sort == .date ? library.folders : library.folders.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     private var title: String {
-        if favoritesOnly { return "Preferiti" }
+        if let t = activeTag { return t }
+        if favoritesOnly { return String(localized: "Preferiti") }
         if let folder { return library.folders.first { $0.id == folder }?.name ?? "Cartella" }
         return "Documenti"
     }
@@ -136,6 +172,7 @@ struct ShelfView: View {
                     .padding(.top, 4)
                 ErrorBanner(error: Binding(get: { library.error }, set: { library.error = $0 }))
                 controls
+                if folder == nil && !library.allTags.isEmpty { tagRow }
                 if listMode { list } else { grid }
                 if notebooks.isEmpty && folders.isEmpty && (folder != nil || favoritesOnly) {
                     Text(favoritesOnly ? "Nessun preferito: tieni premuto un quaderno o usa il suo menu per aggiungerlo."
@@ -204,6 +241,32 @@ struct ShelfView: View {
                 if let nb { router.open = OpenRequest(notebookID: nb.id) }
             }
         }
+        .alert("Nuova etichetta", isPresented: $askTag) {
+            TextField("Nome (per esempio Scuola)", text: $tagName)
+            Button("Annulla", role: .cancel) { tagTarget = nil }
+            Button("Aggiungi") {
+                if let nb = tagTarget { library.addTag(nb.id, tagName) }
+                tagTarget = nil
+            }
+        }
+        .alert("Rinomina etichetta", isPresented: Binding(get: { renamingTag != nil }, set: { if !$0 { renamingTag = nil } })) {
+            TextField("Nome", text: $tagName)
+            Button("Annulla", role: .cancel) {}
+            Button("Salva") {
+                if let old = renamingTag {
+                    library.renameTag(old, to: tagName)
+                    if tagFilter == old { tagFilter = tagName.trimmingCharacters(in: .whitespacesAndNewlines) }
+                }
+            }
+        }
+        .confirmationDialog("Togliere l'etichetta «\(confirmDeleteTag ?? "")» da tutti i quaderni? I quaderni restano.",
+                            isPresented: Binding(get: { confirmDeleteTag != nil }, set: { if !$0 { confirmDeleteTag = nil } }),
+                            titleVisibility: .visible) {
+            Button("Elimina etichetta", role: .destructive) {
+                if let t = confirmDeleteTag { library.deleteTag(t) }
+                confirmDeleteTag = nil
+            }
+        }
         .alert("Rinomina quaderno", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Titolo", text: $newName)
             Button("Annulla", role: .cancel) {}
@@ -260,6 +323,35 @@ struct ShelfView: View {
         .font(.title3)
     }
 
+    /// The labels, to show only the notebooks with one of them.
+    private var tagRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                chip(String(localized: "Tutti"), icon: "tray.full", on: activeTag == nil) { withAnimation { tagFilter = nil } }
+                ForEach(library.allTags, id: \.self) { t in
+                    chip(t, icon: "tag", on: activeTag == t) { withAnimation { tagFilter = activeTag == t ? nil : t } }
+                        .contextMenu {
+                            Button { tagName = t; renamingTag = t } label: { Label("Rinomina", systemImage: "pencil") }
+                            Button(role: .destructive) { confirmDeleteTag = t } label: { Label("Elimina etichetta", systemImage: "trash") }
+                        }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func chip(_ text: String, icon: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(text, systemImage: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(on ? Theme.bg : Theme.text)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(on ? Theme.accent : Theme.panel, in: Capsule())
+                .overlay(Capsule().stroke(on ? .clear : Theme.line, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var newMenu: some View {
         Group {
             Button { showNew = true } label: { Label("Quaderno", systemImage: "book.closed") }
@@ -309,6 +401,10 @@ struct ShelfView: View {
                     caption(nb.title) { menu(nb) }
                     Text(nb.modified.formatted(.dateTime.day().month(.abbreviated).year().hour().minute()))
                         .font(.caption).foregroundStyle(Theme.sub).lineLimit(1)
+                    if !nb.tagList.isEmpty {
+                        Text(nb.tagList.joined(separator: " · "))
+                            .font(.caption2.weight(.semibold)).foregroundStyle(Theme.accent.opacity(0.85)).lineLimit(1)
+                    }
                 }
             }
         }
@@ -343,7 +439,8 @@ struct ShelfView: View {
             ForEach(notebooks) { nb in
                 Button { router.open = OpenRequest(notebookID: nb.id) } label: {
                     row(art: AnyView(NotebookCover(notebook: nb, version: library.thumbVersion[nb.id, default: 0])), title: nb.title,
-                        subtitle: "\(nb.pages.count) pag. · " + nb.modified.formatted(.dateTime.day().month(.abbreviated).year().hour().minute())) { menu(nb) }
+                        subtitle: ([String(localized: "\(nb.pages.count) pag."), nb.modified.formatted(.dateTime.day().month(.abbreviated).year().hour().minute())] + nb.tagList)
+                            .joined(separator: " · ")) { menu(nb) }
                 }
                 .buttonStyle(.plain)
                 .contextMenu { menu(nb) }
@@ -427,6 +524,15 @@ struct ShelfView: View {
                 }
             }
         } label: { Label("Sposta in cartella", systemImage: "folder") }
+        Menu {
+            ForEach(library.allTags, id: \.self) { t in
+                Button { library.toggleTag(nb.id, t) } label: {
+                    if nb.tagList.contains(t) { Label(t, systemImage: "checkmark") } else { Text(t) }
+                }
+            }
+            if !library.allTags.isEmpty { Divider() }
+            Button { tagTarget = nb; tagName = ""; askTag = true } label: { Label("Nuova etichetta…", systemImage: "plus") }
+        } label: { Label("Etichette", systemImage: "tag") }
         Button { library.duplicate(nb.id) } label: { Label("Duplica", systemImage: "plus.square.on.square") }
         Button {
             do { share = ShareFile(url: try PageRenderer.exportPDF(nb)) } catch { library.error = "Esportazione non riuscita: \(error.localizedDescription)" }

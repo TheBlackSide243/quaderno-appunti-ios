@@ -216,6 +216,22 @@ struct Notebook: Codable, Identifiable, Hashable {
     var favorite = false
     /// When it was moved to the trash; nil for notebooks on the shelf.
     var deletedAt: Date?
+    /// Labels chosen by the user (nil = none; optional so older notebooks still open).
+    var tags: [String]?
+    /// Sound recorded while writing in this notebook.
+    var recordings: [Recording]?
+
+    var tagList: [String] { tags ?? [] }
+}
+
+/// A sound recording of a notebook. Each stroke knows when it was written, so a tap on the
+/// writing plays what was being said at that moment.
+struct Recording: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var start: Date
+    var duration: Double
+
+    var end: Date { start.addingTimeInterval(duration) }
 }
 
 struct Folder: Codable, Identifiable, Hashable {
@@ -238,6 +254,8 @@ struct PageItem: Codable, Identifiable, Hashable {
     var color: String = "1C1C20"
     var bold = false
     var image: String?
+    /// The page this box leads to when its link button is tapped.
+    var link: UUID?
 
     var frame: CGRect {
         get { CGRect(x: x, y: y, width: w, height: h) }

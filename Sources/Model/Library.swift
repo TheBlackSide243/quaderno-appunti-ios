@@ -25,6 +25,8 @@ enum Store {
     static func drawing(_ id: UUID, _ page: UUID) -> URL { pagesDir(id).appendingPathComponent("\(page.uuidString).drawing") }
     static func items(_ id: UUID, _ page: UUID) -> URL { pagesDir(id).appendingPathComponent("\(page.uuidString).items.json") }
     static func image(_ id: UUID, _ name: String) -> URL { imagesDir(id).appendingPathComponent(name) }
+    static func audioDir(_ id: UUID) -> URL { dir(id).appendingPathComponent("audio", isDirectory: true) }
+    static func audio(_ id: UUID, _ rec: UUID) -> URL { audioDir(id).appendingPathComponent("\(rec.uuidString).m4a") }
 
     static func ensureDirs(_ id: UUID) {
         for d in [dir(id), pagesDir(id), imagesDir(id)] {
@@ -173,6 +175,7 @@ final class Library {
         if let data = try? Store.encoder.encode(nb) { try? data.write(to: Store.meta(nb.id), options: .atomic) }
         if let i = notebooks.firstIndex(where: { $0.id == nb.id }) { notebooks[i] = nb } else { notebooks.append(nb) }
         notebooks.sort { $0.modified > $1.modified }
+        Spotlight.shared.schedule(nb)
     }
 
     private func saveFolders() {
@@ -316,6 +319,62 @@ final class Library {
 
     func count(in folder: UUID) -> Int { notebooks.filter { $0.folderID == folder }.count }
 
+    // MARK: Tags
+
+    /// Every label used by some notebook, in alphabetical order.
+    var allTags: [String] {
+        Array(Set(notebooks.flatMap(\.tagList))).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    /// Notebooks with a label, from every folder, in the chosen order.
+    func notebooks(tagged tag: String, order: SortOrder, favoritesOnly: Bool) -> [Notebook] {
+        var list = notebooks.filter { $0.tagList.contains(tag) && (!favoritesOnly || $0.favorite) }
+        switch order {
+        case .date: list.sort { $0.modified > $1.modified }
+        case .name, .kind: list.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        }
+        return list
+    }
+
+    func toggleTag(_ id: UUID, _ tag: String) {
+        guard var nb = notebook(id) else { return }
+        var t = nb.tagList
+        if let i = t.firstIndex(of: tag) { t.remove(at: i) } else { t.append(tag) }
+        nb.tags = t.isEmpty ? nil : t
+        save(nb, touch: false)
+    }
+
+    /// Adds a new label to a notebook; returns the label as stored (trimmed), or nil if empty.
+    @discardableResult
+    func addTag(_ id: UUID, _ raw: String) -> String? {
+        let tag = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tag.isEmpty, var nb = notebook(id) else { return nil }
+        // reuse the spelling of a label that already exists
+        let existing = allTags.first { $0.compare(tag, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame } ?? tag
+        if !nb.tagList.contains(existing) { nb.tags = nb.tagList + [existing] }
+        save(nb, touch: false)
+        return existing
+    }
+
+    func renameTag(_ old: String, to raw: String) {
+        let new = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !new.isEmpty, new != old else { return }
+        for var nb in notebooks where nb.tagList.contains(old) {
+            var t = nb.tagList.filter { $0 != old }
+            if !t.contains(new) { t.append(new) }
+            nb.tags = t
+            save(nb, touch: false)
+        }
+    }
+
+    func deleteTag(_ tag: String) {
+        for var nb in notebooks where nb.tagList.contains(tag) {
+            let t = nb.tagList.filter { $0 != tag }
+            nb.tags = t.isEmpty ? nil : t
+            save(nb, touch: false)
+        }
+    }
+
     func rename(_ id: UUID, to title: String) {
         guard var nb = notebook(id) else { return }
         let t = title.trimmingCharacters(in: .whitespaces)
@@ -374,6 +433,8 @@ final class Library {
         }
         PDFCache.shared.forget(id)
         Indexer.shared.forget(id)
+        Spotlight.shared.remove(id)
+        Tombstones.add(id)
         notebooks.removeAll { $0.id == id }
         trashed.insert(nb, at: 0)
     }
@@ -394,7 +455,9 @@ final class Library {
         nb.deletedAt = nil
         if let f = nb.folderID, !folders.contains(where: { $0.id == f }) { nb.folderID = nil }
         trashed.removeAll { $0.id == id }
-        save(nb, touch: false)
+        Tombstones.remove(id)
+        // newer than its deletion, so syncing does not delete it again on the other devices
+        save(nb, touch: true)
         refreshThumb(id)
         Indexer.shared.catchUp([nb])
     }
