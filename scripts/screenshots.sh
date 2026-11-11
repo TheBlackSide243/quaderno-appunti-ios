@@ -49,7 +49,10 @@ shoot() {
   if [ "$kind" = duo ]; then
     # Two screens: --display=1 is the outer one (closed), --display=3 the inner one (open).
     # The simulator starts closed; switching the outer screen off makes iOS use the inner one.
-    if [ "${DUO_SIDES:-closed open}" != open ]; then pass "$udid" duo-closed 1; fi
+    # Switching the outer screen off crashes the simulator's home screen (SpringBoard) on the
+    # runners, so the open side is shot only when asked with DUO_SIDES containing "open".
+    if [ "${DUO_SIDES:-closed}" != open ]; then pass "$udid" duo-closed 1; fi
+    case "${DUO_SIDES:-closed}" in *open*) ;; *) xcrun simctl shutdown "$udid" || true; return 0 ;; esac
     xcrun simctl io "$udid" screenConfig --display=1 power off || true
     xcrun simctl io "$udid" screenConfig --display=3 power on || true
     # The home screen restarts on the inner screen: give it time before opening the app.
