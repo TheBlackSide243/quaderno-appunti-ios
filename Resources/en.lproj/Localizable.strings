@@ -308,3 +308,10 @@
 "Inserisci nella pagina" = "Insert in the page";
 "Il testo resta salvato con la registrazione e si trova anche con la ricerca." = "The text stays saved with the recording and can be found with search too.";
 "Trascrizione" = "Transcript";
+
+/* GoodNotes import */
+"Il file non è un quaderno GoodNotes leggibile." = "The file is not a readable GoodNotes notebook.";
+"In questo quaderno GoodNotes non ho trovato pagine." = "I found no pages in this GoodNotes notebook.";
+"Importa da GoodNotes" = "Import from GoodNotes";
+"Importo il quaderno GoodNotes…" = "Importing the GoodNotes notebook…";
+"Questo file non è né un PDF né un quaderno GoodNotes." = "This file is neither a PDF nor a GoodNotes notebook.";

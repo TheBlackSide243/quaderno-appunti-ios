@@ -22,11 +22,21 @@ struct LibraryView: View {
     @Environment(\.scenePhase) private var phase
     @AppStorage("intro.seen") private var introSeen = false
     @State private var router = Router()
+    @State private var importing = false
 
     var body: some View {
         NavigationStack {
             ShelfView(folder: nil)
                 .navigationDestination(for: UUID.self) { ShelfView(folder: $0) }
+        }
+        .overlay {
+            if importing {
+                VStack(spacing: 12) {
+                    ProgressView().controlSize(.large)
+                    Text("Importo il quaderno GoodNotes…").font(.subheadline).foregroundStyle(Theme.sub)
+                }
+                .padding(30).background(Theme.panel, in: RoundedRectangle(cornerRadius: 16))
+            }
         }
         .environment(router)
         .fullScreenCover(item: $router.open) { req in
@@ -66,9 +76,19 @@ struct LibraryView: View {
                 .preferredColorScheme(.dark)
         }
         .onOpenURL { url in
-            guard url.pathExtension.lowercased() == "pdf" else { return }
-            if let nb = library.importPDF(url, folder: nil) { router.open = OpenRequest(notebookID: nb.id) }
-            try? FileManager.default.removeItem(at: url)
+            switch url.pathExtension.lowercased() {
+            case "pdf":
+                if let nb = library.importPDF(url, folder: nil) { router.open = OpenRequest(notebookID: nb.id) }
+                try? FileManager.default.removeItem(at: url)
+            case "goodnotes":
+                importing = true
+                Task {
+                    if let nb = await library.importGoodNotes(url, folder: nil) { router.open = OpenRequest(notebookID: nb.id) }
+                    try? FileManager.default.removeItem(at: url)
+                    importing = false
+                }
+            default: break
+            }
         }
         .onContinueUserActivity(CSSearchableItemActionType) { activity in
             // a result of the iPhone's search: open the notebook at that page
@@ -111,6 +131,7 @@ struct ShelfView: View {
     @State private var favoritesOnly = false
     @State private var showNew = false
     @State private var showImport = false
+    @State private var importTypes: [UTType] = [.pdf]
     @State private var showPhotos = false
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var renaming: Notebook?
@@ -208,11 +229,27 @@ struct ShelfView: View {
                 .pageSized()
         }
         .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
-        .fileImporter(isPresented: $showImport, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { result in
+        .fileImporter(isPresented: $showImport, allowedContentTypes: importTypes, allowsMultipleSelection: true) { result in
             guard case let .success(urls) = result else { return }
+            let goodNotes = urls.filter { $0.pathExtension.lowercased() == "goodnotes" }
             var last: Notebook?
-            for url in urls { if let nb = library.importPDF(url, folder: folder) { last = nb } }
-            if urls.count == 1, let last { router.open = OpenRequest(notebookID: last.id) }
+            for url in urls where !goodNotes.contains(url) {
+                if url.pathExtension.lowercased() == "pdf" {
+                    if let nb = library.importPDF(url, folder: folder) { last = nb }
+                } else {
+                    library.error = String(localized: "Questo file non è né un PDF né un quaderno GoodNotes.")
+                }
+            }
+            if goodNotes.isEmpty {
+                if urls.count == 1, let last { router.open = OpenRequest(notebookID: last.id) }
+                return
+            }
+            busy = true
+            Task {
+                for url in goodNotes { if let nb = await library.importGoodNotes(url, folder: folder) { last = nb } }
+                busy = false
+                if urls.count == 1, let last { router.open = OpenRequest(notebookID: last.id) }
+            }
         }
         .fullScreenCover(isPresented: $showScanner) {
             ScannerView { images in
@@ -355,7 +392,10 @@ struct ShelfView: View {
     private var newMenu: some View {
         Group {
             Button { showNew = true } label: { Label("Quaderno", systemImage: "book.closed") }
-            Button { showImport = true } label: { Label("Importa PDF", systemImage: "doc.richtext") }
+            Button { importTypes = [.pdf]; showImport = true } label: { Label("Importa PDF", systemImage: "doc.richtext") }
+            Button { importTypes = [.goodNotes, .zip, .data]; showImport = true } label: {
+                Label("Importa da GoodNotes", systemImage: "square.and.arrow.down.on.square")
+            }
             Button { showPhotos = true } label: { Label("Da foto", systemImage: "photo.on.rectangle") }
             if ScannerView.isSupported {
                 Button { showScanner = true } label: { Label("Scansiona documento", systemImage: "doc.viewfinder") }

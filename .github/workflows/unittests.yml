@@ -1,0 +1,37 @@
+# Unit tests (the GoodNotes import, on a sample notebook made by scripts/make_goodnotes_fixture.py).
+# Runs on every push of a branch and by hand.
+name: Unit tests
+
+on:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unittests:
+    runs-on: xcode-27
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_[0-9]*.app 2>/dev/null | grep -vi 'beta' | sort -V | tail -1)
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+
+      - name: Tools
+        run: brew install xcodegen
+
+      - name: Xcode project
+        run: xcodegen generate
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test -project Appunti.xcodeproj -scheme Appunti -only-testing:AppuntiTests \
+            -destination "platform=iOS Simulator,name=iPhone 18 Pro" CODE_SIGNING_ALLOWED=NO 2>&1 \
+            | tee test.log | grep -E "Test Case|error:|XCTAssert|GoodNotes|TEST (SUCCEEDED|FAILED)|\*\* "

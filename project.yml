@@ -30,7 +30,25 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     scheme:
       testTargets:
+        - AppuntiTests
         - AppuntiUITests
+  AppuntiTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: UnitTests
+        excludes:
+          - "Fixtures/**"
+      - path: UnitTests/Fixtures/sample.goodnotes
+        buildPhase: resources
+    dependencies:
+      - target: Appunti
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.local.appunti.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Appunti.app/Appunti"
+        BUNDLE_LOADER: "$(TEST_HOST)"
   AppuntiUITests:
     type: bundle.ui-testing
     platform: iOS

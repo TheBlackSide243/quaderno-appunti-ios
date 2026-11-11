@@ -227,6 +227,23 @@ final class Library {
         return nb
     }
 
+    /// Turns a GoodNotes notebook into a new notebook: paper, handwriting, highlighter, photos, text.
+    func importGoodNotes(_ url: URL, folder: UUID?) async -> Notebook? {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let nb = try await Task.detached(priority: .userInitiated) { try GoodNotesImport.read(url, folder: folder) }.value
+            save(nb)
+            refreshThumb(nb.id)
+            if nb.hasPDF { Indexer.shared.indexPDF(nb) }
+            for page in nb.pages { Indexer.shared.schedule(nb, page: page.id) }
+            return nb
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription ?? String(localized: "Il file non è un quaderno GoodNotes leggibile.")
+            return nil
+        }
+    }
+
     /// Adds the pages of a PDF at the end of an existing notebook.
     func appendPDF(_ url: URL, to id: UUID) -> Notebook? {
         guard var nb = notebook(id) else { return nil }
