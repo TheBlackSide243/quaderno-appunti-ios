@@ -77,6 +77,8 @@ final class Spotlight: @unchecked Sendable {
         let pages = nb.pages.count == 1 ? String(localized: "1 pagina") : String(localized: "\(nb.pages.count) pagine")
         book.contentDescription = ([pages] + nb.tagList).joined(separator: " · ")
         book.keywords = nb.tagList
+        let heard = (nb.recordings ?? []).compactMap(\.transcript).joined(separator: "\n")
+        if !heard.isEmpty { book.textContent = heard }
         book.contentModificationDate = nb.modified
         if let data = try? Data(contentsOf: Store.thumb(nb.id)) { book.thumbnailData = data }
         out.append(CSSearchableItem(uniqueIdentifier: "nb:\(nb.id.uuidString)", domainIdentifier: domain, attributeSet: book))

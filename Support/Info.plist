@@ -48,6 +48,8 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Per scansionare documenti e aggiungerli come pagine di un quaderno.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Per trascrivere in testo le registrazioni fatte mentre scrivi.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Per registrare l'audio mentre scrivi: toccando la scrittura senti cosa si diceva in quel momento.</string>
 	<key>UIBackgroundModes</key>

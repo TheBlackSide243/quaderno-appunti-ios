@@ -293,3 +293,18 @@
 "teorema (Newton–Leibniz)" = "theorem (Newton–Leibniz)";
 "ultimo giorno" = "last day";
 "paper.white" = "White";
+
+/* 0.5.1: transcription of recordings */
+"Trascrivi in testo" = "Transcribe to text";
+"Mostra il testo" = "Show the text";
+"Per trascrivere consenti il riconoscimento vocale: Impostazioni → Quaderno Appunti → Riconoscimento vocale." = "To transcribe, allow speech recognition: Settings → Quaderno Appunti → Speech Recognition.";
+"Il riconoscimento vocale per questa lingua adesso non è disponibile. Riprova con la connessione a internet." = "Speech recognition for this language is not available right now. Try again with an internet connection.";
+"In questa registrazione non ho sentito parole." = "I heard no words in this recording.";
+"Lingua" = "Language";
+"Italiano" = "Italian";
+"Inglese" = "English";
+"Trascrivo la registrazione…" = "Transcribing the recording…";
+"Riprova" = "Try again";
+"Inserisci nella pagina" = "Insert in the page";
+"Il testo resta salvato con la registrazione e si trova anche con la ricerca." = "The text stays saved with the recording and can be found with search too.";
+"Trascrizione" = "Transcript";

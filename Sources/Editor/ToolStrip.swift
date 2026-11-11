@@ -52,6 +52,9 @@ struct ToolStrip: View {
             .padding(.horizontal, 10)
         }
         .frame(height: 52)
+        // a scroll view draws its content into the safe area too: on the iPhone Duo the tools ran
+        // under the status bar and the buttons on the right side of the screen
+        .clipped()
         .background(Theme.panel)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
     }

@@ -230,6 +230,8 @@ struct Recording: Codable, Identifiable, Hashable {
     var id = UUID()
     var start: Date
     var duration: Double
+    /// What was said, once transcribed.
+    var transcript: String? = nil
 
     var end: Date { start.addingTimeInterval(duration) }
 }

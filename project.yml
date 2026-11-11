@@ -7,8 +7,8 @@ options:
   developmentLanguage: it
 settings:
   base:
-    MARKETING_VERSION: "0.5.0"
-    CURRENT_PROJECT_VERSION: "9"
+    MARKETING_VERSION: "0.5.1"
+    CURRENT_PROJECT_VERSION: "10"
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGN_STYLE: Manual

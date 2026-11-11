@@ -214,6 +214,7 @@ final class AudioNotes: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate
 struct AudioBar: View {
     let model: EditorModel
     var onShare: (URL) -> Void
+    var onTranscribe: (Recording) -> Void
 
     private var audio: AudioNotes { model.audio }
 
@@ -306,6 +307,10 @@ struct AudioBar: View {
         }
         if let rec = audio.current {
             Section {
+                Button { onTranscribe(model.recordings.first { $0.id == rec.id } ?? rec) } label: {
+                    Label(model.recordings.first { $0.id == rec.id }?.transcript == nil ? String(localized: "Trascrivi in testo") : String(localized: "Mostra il testo"),
+                          systemImage: "text.quote")
+                }
                 Button { onShare(Store.audio(model.notebook.id, rec.id)) } label: {
                     Label("Condividi questa registrazione", systemImage: "square.and.arrow.up")
                 }

@@ -508,6 +508,19 @@ final class EditorModel {
         library.save(notebook)
     }
 
+    func setTranscript(_ rec: Recording, _ text: String) {
+        guard let i = recordings.firstIndex(where: { $0.id == rec.id }) else { return }
+        notebook.recordings?[i].transcript = text
+        library.save(notebook)
+    }
+
+    /// Puts text on the page in a new box.
+    func insertText(_ text: String) {
+        tools.tool = .hand
+        drawMode = false
+        canvas.addText(text)
+    }
+
     func deleteRecording(_ rec: Recording) {
         audio.forget(rec)
         try? FileManager.default.removeItem(at: Store.audio(notebook.id, rec.id))

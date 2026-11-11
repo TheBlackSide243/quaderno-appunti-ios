@@ -27,6 +27,7 @@ struct EditorView: View {
     @State private var confirmClear = false
     @State private var renaming = false
     @State private var newTitle = ""
+    @State private var transcribing: Recording?
 
     init(library: Library, notebook: Notebook, page: Int?) {
         _model = State(initialValue: EditorModel(library: library, notebook: notebook, page: page))
@@ -57,7 +58,7 @@ struct EditorView: View {
                     .ignoresSafeArea(edges: .bottom)
                 VStack(spacing: 10) {
                     if model.audio.panel || model.audio.recording {
-                        AudioBar(model: model, onShare: { share = ShareFile(url: $0) })
+                        AudioBar(model: model, onShare: { share = ShareFile(url: $0) }, onTranscribe: { transcribing = $0 })
                             .padding(.horizontal, 12)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
@@ -121,6 +122,10 @@ struct EditorView: View {
             }
             .sheet(isPresented: $showText) {
                 RecognizedTextView(model: model)
+                    .presentationDetents([.medium, .large])
+            }
+            .sheet(item: $transcribing) { rec in
+                TranscriptView(model: model, recording: rec)
                     .presentationDetents([.medium, .large])
             }
             .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
