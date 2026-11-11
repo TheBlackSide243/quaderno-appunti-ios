@@ -111,8 +111,12 @@ final class ToolStressTests: XCTestCase {
         tapTool(app, "Puntatore laser")
         drag(app, from: (0.2, 0.4), to: (0.8, 0.6))
         alive(app, "laser")
-        tapTool(app, "Registrazione audio")
+        // the audio button is at the end of the tool strip, often scrolled away: use the ⋯ menu
+        app.buttons["Altro"].tap()
+        let item = app.buttons["Registrazione audio"].firstMatch
+        if item.waitForExistence(timeout: 5) { item.tap() }
         alive(app, "audio bar")
+        XCTAssertTrue(app.buttons["Registra"].waitForExistence(timeout: 5), "the audio bar did not open")
         tapTool(app, "Penna")
         drag(app, from: (0.3, 0.5), to: (0.6, 0.55))
         alive(app, "pen after the laser")
