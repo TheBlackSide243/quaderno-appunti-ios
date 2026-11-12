@@ -64,6 +64,9 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 - **PDF**: importa un PDF come nuovo quaderno (anche con "Apri con" dall'app File) o aggiungine
   le pagine a un quaderno esistente, e scrivici sopra. Un quaderno si crea anche da foto o
   **scansionando un documento** con la fotocamera.
+- **Da GoodNotes**: un file `.goodnotes` (aperto con "Condividi" o dall'app File, oppure con
+  + → Importa da GoodNotes) diventa un quaderno con pagine, carta, scrittura, evidenziatore,
+  forme, foto e riquadri di testo.
 - **Testo e foto** sulla pagina: riquadri di testo (dimensione, grassetto, colore) e immagini,
   da trascinare e ridimensionare; **Incolla** mette sulla pagina il testo o l'immagine copiati.
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in
