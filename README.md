@@ -78,6 +78,9 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
   parte della pagina, con lo sfondo trasparente. **Lavagna infinita**: una sola pagina che si
   allarga mentre scrivi vicino ai bordi. Su iPad un quaderno si apre anche in una **finestra**
   sua, per tenerne due affiancati.
+- **Livelli** in ogni pagina, da aggiungere, nascondere, rinominare e riordinare. **Documenti di
+  testo** scritti con la tastiera, con stili, grassetto, elenchi, elenchi da spuntare e colori,
+  da esportare in PDF, RTF o testo semplice.
 - **Testo e foto** sulla pagina: riquadri di testo (dimensione, grassetto, colore) e immagini,
   da trascinare e ridimensionare; **Incolla** mette sulla pagina il testo o l'immagine copiati.
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in
