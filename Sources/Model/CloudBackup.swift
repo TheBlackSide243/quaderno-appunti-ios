@@ -331,7 +331,8 @@ final class CloudBackup {
     private nonisolated static func cleanUp(_ id: UUID, here: URL, there: URL) {
         guard let nb = (try? Data(contentsOf: Store.meta(id))).flatMap({ try? Store.decoder.decode(Notebook.self, from: $0) }) else { return }
         let fm = FileManager.default
-        let pages = Set(nb.pages.map(\.id.uuidString))
+        // the ink of a page is in one file per layer, named after the layer
+        let pages = Set(nb.pages.flatMap { [$0.id.uuidString] + $0.inkLayers.map(\.id.uuidString) })
         var images: Set<String> = []
         for p in nb.pages {
             for item in Store.loadItems(id, p.id) { if let name = item.image { images.insert(name) } }
