@@ -179,7 +179,7 @@ final class TextDocController: NSObject, UITextViewDelegate {
         return false
     }
 
-    static func listPrefix(_ line: String) -> String? {
+    nonisolated static func listPrefix(_ line: String) -> String? {
         if line.hasPrefix("• ") { return "• " }
         if line.hasPrefix("☐ ") { return "☐ " }
         if line.hasPrefix("☑ ") { return "☐ " }
@@ -188,7 +188,7 @@ final class TextDocController: NSObject, UITextViewDelegate {
         return nil
     }
 
-    private static func next(_ prefix: String) -> String {
+    private nonisolated static func next(_ prefix: String) -> String {
         if let n = Int(prefix.dropLast(2)) { return "\(n + 1). " }
         return prefix
     }
