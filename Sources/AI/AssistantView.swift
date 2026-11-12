@@ -83,7 +83,7 @@ struct AssistantView: View {
 
     private var actions: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Sui tuoi appunti, sul telefono").font(.caption.weight(.semibold)).foregroundStyle(Theme.sub)
+            Text("Sui tuoi appunti, sul dispositivo").font(.caption.weight(.semibold)).foregroundStyle(Theme.sub)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     chip(String(localized: "Riassumi la pagina"), "text.alignleft") { Task { await summarizePage() } }
