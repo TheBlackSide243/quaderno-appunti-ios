@@ -113,7 +113,7 @@ struct StudyView: View {
             try? await Task.sleep(for: .milliseconds(120))
             var cache: [UUID: UIImage] = [:]
             var out: [UUID: CardPair] = [:]
-            for c in cards {
+            for c in cards where !c.isText {
                 if let r = CardImages.render(notebook, c, pageCache: &cache) { out[c.id] = CardPair(front: r.0, back: r.1) }
             }
             images = out
@@ -173,7 +173,13 @@ struct StudyView: View {
             .padding(.horizontal, 4)
             ScrollView {
                 VStack(spacing: 12) {
-                    if let p = images[card.id] {
+                    if card.isText {
+                        textSide(String(localized: "Domanda"), card.question ?? "")
+                        if showBack {
+                            textSide(String(localized: "Risposta"), card.answer ?? "")
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        }
+                    } else if let p = images[card.id] {
                         side(String(localized: "Domanda"), p.front)
                         if showBack {
                             side(String(localized: "Risposta"), p.back)
@@ -203,6 +209,18 @@ struct StudyView: View {
         }
         .padding(16)
         .frame(maxWidth: 760)
+    }
+
+    private func textSide(_ title: String, _ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption.weight(.semibold)).foregroundStyle(Theme.sub)
+            Text(text)
+                .font(.title3)
+                .foregroundStyle(Color(red: 0.11, green: 0.11, blue: 0.13))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(18)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
     }
 
     private func side(_ title: String, _ img: UIImage) -> some View {
@@ -265,13 +283,17 @@ struct StudyView: View {
             List {
                 ForEach(cards.sorted { $0.created < $1.created }) { card in
                     HStack(spacing: 12) {
-                        if let p = images[card.id] {
+                        if card.isText {
+                            Image(systemName: "text.bubble").font(.title2).foregroundStyle(Theme.accent).frame(width: 110, height: 60)
+                        } else if let p = images[card.id] {
                             Image(uiImage: p.front).resizable().scaledToFit().frame(width: 110, height: 60)
                                 .background(Color.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         }
                         VStack(alignment: .leading, spacing: 3) {
-                            if let n = notebook.pages.firstIndex(where: { $0.id == card.page }) {
+                            if let q = card.question {
+                                Text(q).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(2)
+                            } else if let n = notebook.pages.firstIndex(where: { $0.id == card.page }) {
                                 Text("Pagina \(n + 1)").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
                             }
                             Text(card.isDue() ? String(localized: "Da ripassare") : String(localized: "Torna \(card.due.formatted(.relative(presentation: .named)))"))

@@ -103,6 +103,12 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     private var pickStart = CGPoint.zero
     private let tapeTap = UITapGestureRecognizer()
 
+    /// Words marked by the spelling check, with a red wavy line; a tap on one asks what to do.
+    private let spellLayer = CAShapeLayer()
+    private var spellRects: [CGRect] = []
+    private let spellTap = UITapGestureRecognizer()
+    var onSpellTap: ((Int) -> Void)?
+
     /// Draw a shape by hand and keep the pen still at the end: it becomes a clean shape.
     var snapShapes = true
     private var inkPoints: [CGPoint] = []
@@ -163,6 +169,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         canvas.blocksDrawing = { [weak self] p in
             guard let self else { return false }
             if self.links.button(at: self.canvas.convert(p, to: self.links)) != nil { return true }
+            if self.spellIndex(at: self.canvas.convert(p, to: self.items)) != nil { return true }
             // a covered tape takes the touch, to be uncovered
             return self.items.tape(at: self.canvas.convert(p, to: self.items))?.isCovered == true
         }
@@ -213,6 +220,17 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         pickPan.delegate = self
         pickPan.isEnabled = false
         canvas.addGestureRecognizer(pickPan)
+
+        spellLayer.fillColor = nil
+        spellLayer.strokeColor = UIColor(red: 0.9, green: 0.15, blue: 0.15, alpha: 0.9).cgColor
+        spellLayer.lineWidth = 1.4
+        spellLayer.lineCap = .round
+        spellLayer.zPosition = 13
+        items.layer.addSublayer(spellLayer)
+        spellTap.addTarget(self, action: #selector(spellTapped))
+        spellTap.delegate = self
+        spellTap.isEnabled = false
+        canvas.addGestureRecognizer(spellTap)
 
         tapeTap.addTarget(self, action: #selector(tapeTapped))
         tapeTap.delegate = self
@@ -301,6 +319,9 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         links.bounds = CGRect(origin: .zero, size: pg.size)
         links.update(items.items, zoom: canvas.zoomScale)
         shapeLayer.path = nil
+        spellLayer.path = nil
+        spellRects = []
+        spellTap.isEnabled = false
         pickLayer.path = nil
         markLayer.path = nil
         snapOutline = nil
@@ -615,13 +636,16 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
 
     /// A tap on tape works together with the other gestures of the page.
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-        g === tapeTap
+        g === tapeTap || g === spellTap
     }
 
     /// Shapes and the laser do not start on a link button.
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
         if g === shapePan || g === laserPan || g === pickPan {
             return links.button(at: g.location(in: links)) == nil
+        }
+        if g === spellTap {
+            return spellIndex(at: g.location(in: items)) != nil
         }
         if g === tapeTap {
             guard let t = items.tape(at: g.location(in: items)) else { return false }
@@ -780,6 +804,36 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
 
     func clearInk() {
         setDrawingUndoable(PKDrawing())
+    }
+
+    // MARK: Spelling
+
+    func showMisspelled(_ rects: [CGRect]) {
+        spellRects = rects
+        spellTap.isEnabled = !rects.isEmpty
+        let path = UIBezierPath()
+        for r in rects {
+            // a wavy line under the word
+            let y = r.maxY + 1.5
+            var x = r.minX
+            path.move(to: CGPoint(x: x, y: y))
+            var up = true
+            while x < r.maxX {
+                let nx = min(r.maxX, x + 2.5)
+                path.addQuadCurve(to: CGPoint(x: nx, y: y), controlPoint: CGPoint(x: (x + nx) / 2, y: y + (up ? -2 : 2)))
+                up.toggle()
+                x = nx
+            }
+        }
+        spellLayer.path = rects.isEmpty ? nil : path.cgPath
+    }
+
+    private func spellIndex(at p: CGPoint) -> Int? {
+        spellRects.firstIndex { $0.insetBy(dx: -6, dy: -8).contains(p) }
+    }
+
+    @objc private func spellTapped(_ g: UITapGestureRecognizer) {
+        if let i = spellIndex(at: g.location(in: items)) { onSpellTap?(i) }
     }
 
     // MARK: Tape and areas
