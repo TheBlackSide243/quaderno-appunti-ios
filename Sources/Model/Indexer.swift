@@ -97,7 +97,8 @@ final class Indexer: @unchecked Sendable {
             for nb in notebooks {
                 let i = self.index(nb.id)
                 for page in nb.pages where i[page.id.uuidString] == nil {
-                    if FileManager.default.fileExists(atPath: Store.drawing(nb.id, page.id).path)
+                    if Store.inkStamp(nb.id, page) != nil
+                        || (nb.isText && FileManager.default.fileExists(atPath: TextDoc.url(nb.id).path))
                         || FileManager.default.fileExists(atPath: Store.items(nb.id, page.id).path) {
                         var e = self.pending[nb.id] ?? (nb, [])
                         e.1.insert(page.id)
@@ -122,13 +123,18 @@ final class Indexer: @unchecked Sendable {
             for pid in pages {
                 guard let page = nb.pages.first(where: { $0.id == pid }) else { continue }
                 var t = i[pid.uuidString] ?? PageText()
+                if nb.isText {
+                    t.typed = TextDoc.plain(id)
+                    t.ink = ""
+                    i[pid.uuidString] = t
+                    continue
+                }
                 t.typed = Store.loadItems(id, pid).filter { $0.kind == .text }.map(\.text).joined(separator: "\n")
-                let url = Store.drawing(id, pid)
-                let stamp = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+                let stamp = Store.inkStamp(id, page)
                 if stamp == nil {
                     t.ink = ""
                 } else if stamp != t.inkStamp {
-                    t.ink = autoreleasepool { recognize(Store.loadDrawing(id, pid), size: page.size) }
+                    t.ink = autoreleasepool { recognize(Store.loadInk(id, page), size: page.size) }
                 }
                 t.inkStamp = stamp
                 i[pid.uuidString] = t
@@ -201,7 +207,7 @@ final class Indexer: @unchecked Sendable {
             queue.async {
                 var t = PageText()
                 t.typed = Store.loadItems(nb.id, page.id).filter { $0.kind == .text }.map(\.text).joined(separator: "\n")
-                t.ink = autoreleasepool { self.recognize(Store.loadDrawing(nb.id, page.id), size: page.size) }
+                t.ink = autoreleasepool { self.recognize(Store.loadInk(nb.id, page), size: page.size) }
                 if let n = page.pdfIndex, let doc = PDFDocument(url: Store.pdf(nb.id)), let p = doc.page(at: n) {
                     t.pdf = p.string ?? ""
                 }

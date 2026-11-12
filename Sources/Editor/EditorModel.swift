@@ -189,10 +189,14 @@ final class EditorModel {
 
     var page: PageInfo { notebook.pages[pageIndex] }
 
+    /// The layer being drawn on.
+    var layerID: UUID?
+
     func showPage() {
         guard notebook.pages.indices.contains(pageIndex) else { return }
         if picking != nil { endPicking() }
         canvas.load(notebook, page)
+        layerID = canvas.layerID
         canvas.pullLabels = notebook.isBoard ? (nil, nil) :
             (pageIndex > 0 ? String(localized: "Pagina precedente") : nil,
              pageIndex + 1 < notebook.pages.count ? String(localized: "Pagina successiva") : String(localized: "Nuova pagina"))
@@ -486,8 +490,15 @@ final class EditorModel {
         let src = notebook.pages[index]
         var copy = src
         copy.id = UUID()
-        let d = Store.loadDrawing(notebook.id, src.id)
-        Store.saveDrawing(d, notebook.id, copy.id)
+        // every layer gets a new id; the first layer always has the page's id
+        var newLayers: [InkLayer] = []
+        for l in src.inkLayers {
+            var n = l
+            n.id = l.id == src.id ? copy.id : UUID()
+            Store.saveDrawing(Store.loadDrawing(notebook.id, l.id), notebook.id, n.id)
+            newLayers.append(n)
+        }
+        if src.layers != nil { copy.layers = newLayers }
         var items = Store.loadItems(notebook.id, src.id)
         for i in items.indices {
             items[i].id = UUID()
@@ -508,7 +519,7 @@ final class EditorModel {
         guard notebook.pages.count > 1 else { return }
         canvas.saveNow()
         let pg = notebook.pages.remove(at: index)
-        Store.removePageFiles(notebook.id, pg.id)
+        Store.removePageFiles(notebook.id, pg)
         notebook.cards?.removeAll { $0.page == pg.id }
         if notebook.cards?.isEmpty == true { notebook.cards = nil }
         library.save(notebook)
@@ -593,6 +604,83 @@ final class EditorModel {
         guard at > first else { return }
         library.save(notebook)
         go(to: first)
+    }
+
+    // MARK: Layers
+
+    var layers: [InkLayer] { page.inkLayers }
+
+    func selectLayer(_ id: UUID) {
+        guard layers.contains(where: { $0.id == id }) else { return }
+        // drawing on a hidden layer shows it
+        if let i = layers.firstIndex(where: { $0.id == id }), layers[i].isHidden {
+            var list = layers
+            list[i].hidden = nil
+            setLayers(list)
+        }
+        canvas.load(notebook, page, layer: id)
+        layerID = canvas.layerID
+    }
+
+    func addLayer() {
+        canvas.saveNow()
+        var list = layers
+        let l = InkLayer(name: String(localized: "Livello \(list.count + 1)"))
+        list.append(l)
+        setLayers(list)
+        selectLayer(l.id)
+    }
+
+    func toggleLayerHidden(_ id: UUID) {
+        guard id != layerID, let i = layers.firstIndex(where: { $0.id == id }) else { return }
+        var list = layers
+        list[i].hidden = list[i].isHidden ? nil : true
+        setLayers(list)
+    }
+
+    func renameLayer(_ id: UUID, _ name: String) {
+        let t = name.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty, let i = layers.firstIndex(where: { $0.id == id }) else { return }
+        var list = layers
+        list[i].name = t
+        setLayers(list)
+    }
+
+    /// Moves a layer up (+1, over the others) or down (-1).
+    func moveLayer(_ id: UUID, by delta: Int) {
+        guard let i = layers.firstIndex(where: { $0.id == id }), layers.indices.contains(i + delta) else { return }
+        canvas.saveNow()
+        var list = layers
+        list.swapAt(i, i + delta)
+        setLayers(list)
+    }
+
+    func deleteLayer(_ id: UUID) {
+        guard layers.count > 1 else { return }
+        canvas.saveNow()
+        let list = layers.filter { $0.id != id }
+        let wasActive = id == layerID
+        notebook.pages[pageIndex].layers = list
+        library.save(notebook)
+        try? FileManager.default.removeItem(at: Store.drawing(notebook.id, id))
+        if wasActive {
+            canvas.load(notebook, page, layer: PageCanvasView.startLayer(page))
+            layerID = canvas.layerID
+        }
+        layerChanged()
+    }
+
+    private func setLayers(_ list: [InkLayer]) {
+        notebook.pages[pageIndex].layers = list
+        library.save(notebook)
+        layerChanged()
+    }
+
+    private func layerChanged() {
+        canvas.reloadLayers(notebook, page)
+        if pageIndex == 0 { library.refreshThumb(notebook.id) }
+        pageVersion[page.id, default: 0] += 1
+        Indexer.shared.schedule(notebook, page: page.id)
     }
 
     // MARK: Boxes

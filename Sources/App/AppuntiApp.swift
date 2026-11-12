@@ -44,7 +44,11 @@ struct NotebookWindow: View {
 
     var body: some View {
         if let id, let nb = library.notebook(id) {
-            EditorView(library: library, notebook: nb, page: nil, onClose: { dismissWindow() })
+            if nb.isText {
+                TextDocView(library: library, notebook: nb, onClose: { dismissWindow() })
+            } else {
+                EditorView(library: library, notebook: nb, page: nil, onClose: { dismissWindow() })
+            }
         } else {
             ContentUnavailableView("Quaderno non trovato", systemImage: "book.closed",
                                    description: Text("Forse è stato eliminato. Chiudi questa finestra."))

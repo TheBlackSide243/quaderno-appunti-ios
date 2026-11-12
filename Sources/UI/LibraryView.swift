@@ -41,9 +41,15 @@ struct LibraryView: View {
         .environment(router)
         .fullScreenCover(item: $router.open) { req in
             if let nb = library.notebook(req.notebookID) {
-                EditorView(library: library, notebook: nb, page: req.page)
-                    .environment(library)
-                    .environment(backup)
+                if nb.isText {
+                    TextDocView(library: library, notebook: nb)
+                        .environment(library)
+                        .environment(backup)
+                } else {
+                    EditorView(library: library, notebook: nb, page: req.page)
+                        .environment(library)
+                        .environment(backup)
+                }
             }
         }
         .sheet(isPresented: $router.showSearch) {

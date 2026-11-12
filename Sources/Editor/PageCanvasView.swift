@@ -7,6 +7,12 @@ import UIKit
 final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDelegate, UIPencilInteractionDelegate {
     let canvas = LinkAwareCanvas()
     private let paper = UIImageView()
+    /// The ink of the other layers, drawn as pictures under and over the layer being edited.
+    private let belowInk = UIImageView()
+    private let aboveInk = UIImageView()
+    private var layerScale: CGFloat = 0
+    /// The layer whose ink is on the canvas.
+    private(set) var layerID: UUID?
     let items = ItemsLayer()
     /// The link buttons of the boxes, above everything and usable with any tool.
     private let links = LinkLayer()
@@ -139,6 +145,13 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         paper.layer.anchorPoint = .zero
         canvas.insertSubview(paper, at: 0)
 
+        for v in [belowInk, aboveInk] {
+            v.layer.anchorPoint = .zero
+            v.isUserInteractionEnabled = false
+            v.contentMode = .scaleToFill
+            canvas.addSubview(v)
+        }
+
         items.layer.anchorPoint = .zero
         items.onChange = { [weak self] in self?.itemsChanged() }
         items.onSelection = { [weak self] item in self?.onSelection?(item) }
@@ -234,11 +247,32 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
 
     // MARK: Loading and saving
 
-    func load(_ nb: Notebook, _ pg: PageInfo) {
+    /// The layer drawn on when a page opens: the top one that is not hidden.
+    static func startLayer(_ pg: PageInfo) -> UUID {
+        (pg.inkLayers.last { !$0.isHidden } ?? pg.inkLayers[pg.inkLayers.count - 1]).id
+    }
+
+    func load(_ nb: Notebook, _ pg: PageInfo, layer: UUID? = nil) {
+        let lid = layer.flatMap { l in pg.inkLayers.contains { $0.id == l } ? l : nil } ?? Self.startLayer(pg)
         if let page, page.id == pg.id, notebook?.id == nb.id {
+            if lid != layerID {
+                // another layer of the same page: save this one, put the other on the canvas
+                saveNow()
+                notebook = nb
+                self.page = pg
+                layerID = lid
+                loading = true
+                canvas.drawing = Store.loadDrawing(nb.id, lid)
+                loading = false
+                canvas.undoManager?.removeAllActions()
+                renderLayers(force: true)
+                onUndoChange?()
+                return
+            }
             notebook = nb
             self.page = pg
             if paper.image == nil || paperScale == 0 { renderPaper() }
+            renderLayers(force: true)
             return
         }
         saveNow()
@@ -253,11 +287,15 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         page = pg
         // stop a bounce still running from the pull that turned the page
         canvas.setContentOffset(canvas.contentOffset, animated: false)
+        layerID = lid
         loading = true
-        canvas.drawing = Store.loadDrawing(nb.id, pg.id)
+        canvas.drawing = Store.loadDrawing(nb.id, lid)
         loading = false
         canvas.undoManager?.removeAllActions()
         paper.bounds = CGRect(origin: .zero, size: pg.size)
+        belowInk.bounds = CGRect(origin: .zero, size: pg.size)
+        aboveInk.bounds = CGRect(origin: .zero, size: pg.size)
+        layerScale = 0
         items.bounds = CGRect(origin: .zero, size: pg.size)
         items.load(nb, Store.loadItems(nb.id, pg.id))
         links.bounds = CGRect(origin: .zero, size: pg.size)
@@ -275,13 +313,46 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         setNeedsLayout()
         layoutIfNeeded()
         renderPaper()
+        renderLayers(force: true)
         onUndoChange?()
+    }
+
+    /// Draws the other visible layers of the page under and over the one being edited.
+    private func renderLayers(force: Bool) {
+        guard let nb = notebook, let pg = page, let lid = layerID else { return }
+        let list = pg.inkLayers
+        guard list.count > 1, let i = list.firstIndex(where: { $0.id == lid }) else {
+            belowInk.image = nil
+            aboveInk.image = nil
+            return
+        }
+        let screen = window?.screen.scale ?? 2
+        let maxScale = sqrt(16_000_000 / max(1, pg.size.width * pg.size.height))
+        let zoom = canvas.zoomScale.isFinite && canvas.zoomScale > 0 ? canvas.zoomScale : 1
+        let want = min(maxScale, max(1.5, zoom * screen))
+        guard force || want > layerScale * 1.15 else { return }
+        layerScale = want
+        func picture(_ ls: ArraySlice<InkLayer>) -> UIImage? {
+            let strokes = ls.filter { !$0.isHidden }.flatMap { Store.loadDrawing(nb.id, $0.id).strokes }
+            return strokes.isEmpty ? nil : PageRenderer.inkImage(PKDrawing(strokes: strokes), size: pg.size, scale: want)
+        }
+        belowInk.image = picture(list[..<i])
+        aboveInk.image = picture(list[(i + 1)...])
+    }
+
+    /// After a layer was hidden, shown or moved.
+    func reloadLayers(_ nb: Notebook, _ pg: PageInfo) {
+        notebook = nb
+        page = pg
+        renderLayers(force: true)
     }
 
     /// The page got bigger (a whiteboard growing): the content stays where it is.
     func resize(_ pg: PageInfo) {
         page = pg
         paper.bounds = CGRect(origin: .zero, size: pg.size)
+        belowInk.bounds = CGRect(origin: .zero, size: pg.size)
+        aboveInk.bounds = CGRect(origin: .zero, size: pg.size)
         items.bounds = CGRect(origin: .zero, size: pg.size)
         links.bounds = CGRect(origin: .zero, size: pg.size)
         if bounds.width > 40, bounds.height > 40 {
@@ -335,7 +406,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         saveTask?.cancel()
         guard dirty, let nb = notebook, let pg = page else { return }
         dirty = false
-        Store.saveDrawing(canvas.drawing, nb.id, pg.id)
+        Store.saveDrawing(canvas.drawing, nb.id, layerID ?? pg.id)
         Store.saveItems(items.items, nb.id, pg.id)
         onSaved?(pg)
     }
@@ -373,9 +444,11 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         if refit {
             canvas.contentOffset = CGPoint(x: -canvas.contentInset.left, y: -canvas.contentInset.top)
         }
+        canvas.bringSubviewToFront(aboveInk)
         canvas.bringSubviewToFront(items)
         canvas.bringSubviewToFront(links)
         canvas.sendSubviewToBack(paper)
+        canvas.insertSubview(belowInk, aboveSubview: paper)
         multiplyInk()
     }
 
@@ -396,6 +469,10 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         let t = CGAffineTransform(scaleX: z, y: z)
         paper.transform = t
         paper.layer.position = .zero
+        for v in [belowInk, aboveInk] {
+            v.transform = t
+            v.layer.position = .zero
+        }
         items.transform = t
         items.layer.position = .zero
         links.transform = t
@@ -410,6 +487,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
 
     func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
         renderPaper()
+        renderLayers(force: false)
     }
 
     /// Shows the end of the page (after going back to the previous page by pulling).
