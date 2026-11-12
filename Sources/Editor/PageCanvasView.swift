@@ -13,6 +13,8 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     private var layerScale: CGFloat = 0
     /// The layer whose ink is on the canvas.
     private(set) var layerID: UUID?
+    /// When the files of the page were last read or written, to notice changes made by others.
+    private var stamps: [Date?] = []
     let items = ItemsLayer()
     /// The link buttons of the boxes, above everything and usable with any tool.
     private let links = LinkLayer()
@@ -335,6 +337,44 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         layoutIfNeeded()
         renderPaper()
         renderLayers(force: true)
+        stamps = currentStamps()
+        onUndoChange?()
+    }
+
+    private func currentStamps() -> [Date?] {
+        guard let nb = notebook, let pg = page else { return [] }
+        func mod(_ u: URL) -> Date? { (try? u.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate }
+        return pg.inkLayers.map { mod(Store.drawing(nb.id, $0.id)) } + [mod(Store.items(nb.id, pg.id))]
+    }
+
+    /// A shared notebook got changes: the page is read again if its files changed and nothing
+    /// written here is waiting to be saved.
+    func refreshFromDisk(_ nb: Notebook, _ pg: PageInfo) {
+        guard page?.id == pg.id, let lid = layerID, pg.inkLayers.contains(where: { $0.id == lid }) else {
+            load(nb, pg)
+            return
+        }
+        let paperChanged = page?.template != pg.template || page?.size != pg.size || notebook?.paper != nb.paper
+        notebook = nb
+        page = pg
+        if paperChanged {
+            paperScale = 0
+            renderPaper()
+        }
+        guard !dirty else { return }
+        let now = currentStamps()
+        guard now != stamps else {
+            renderLayers(force: true)
+            return
+        }
+        loading = true
+        canvas.drawing = Store.loadDrawing(nb.id, lid)
+        loading = false
+        items.load(nb, Store.loadItems(nb.id, pg.id))
+        links.update(items.items, zoom: canvas.zoomScale)
+        renderLayers(force: true)
+        stamps = now
+        canvas.undoManager?.removeAllActions()
         onUndoChange?()
     }
 
@@ -429,6 +469,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         dirty = false
         Store.saveDrawing(canvas.drawing, nb.id, layerID ?? pg.id)
         Store.saveItems(items.items, nb.id, pg.id)
+        stamps = currentStamps()
         onSaved?(pg)
     }
 

@@ -183,6 +183,39 @@ final class EditorModel {
         showPage()
         if tools.tool == .hand { tools.tool = .pen }
         applyTool()
+        if !openElsewhere { startSharedSync() }
+    }
+
+    // MARK: Shared notebooks
+
+    @ObservationIgnored private var shareTask: Task<Void, Never>?
+    var isShared: Bool { SharedNotebooks.shared.isShared(notebook.id) }
+
+    /// While a shared notebook is open: what was written is sent, and the others' changes come in,
+    /// every few seconds.
+    private func startSharedSync() {
+        guard isShared else { return }
+        shareTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.syncShared()
+                try? await Task.sleep(for: .seconds(8))
+            }
+        }
+    }
+
+    func syncShared() async {
+        canvas.saveNow()
+        let changed = await SharedNotebooks.shared.sync(notebook.id, library: library)
+        guard changed, !released, let fresh = library.notebook(notebook.id) else { return }
+        let current = page.id
+        let keep = notebook.lastPage
+        notebook = fresh
+        notebook.lastPage = keep
+        pageIndex = notebook.pages.firstIndex { $0.id == current } ?? min(pageIndex, max(0, notebook.pages.count - 1))
+        canvas.refreshFromDisk(notebook, page)
+        layerID = canvas.layerID
+        for p in notebook.pages { pageVersion[p.id, default: 0] += 1 }
+        notice = String(localized: "Sono arrivate modifiche da chi condivide il quaderno.")
     }
 
     func setSnapShapes(_ on: Bool) {
@@ -246,9 +279,18 @@ final class EditorModel {
 
     func close() {
         guard !openElsewhere else { return }
+        shareTask?.cancel()
         if !released {
             released = true
             library.closed(notebook.id)
+            if isShared {
+                let lib = library, id = notebook.id
+                Task { @MainActor in
+                    // after the last save of the editor
+                    try? await Task.sleep(for: .milliseconds(300))
+                    _ = await SharedNotebooks.shared.sync(id, library: lib)
+                }
+            }
         }
         audio.stopAll()
         canvas.saveNow()
@@ -577,6 +619,7 @@ final class EditorModel {
         canvas.saveNow()
         let pg = notebook.pages.remove(at: index)
         Store.removePageFiles(notebook.id, pg)
+        if SharedNotebooks.shared.isShared(notebook.id) { notebook.deletedPages = (notebook.deletedPages ?? []) + [pg.id] }
         notebook.cards?.removeAll { $0.page == pg.id }
         if notebook.cards?.isEmpty == true { notebook.cards = nil }
         library.save(notebook)

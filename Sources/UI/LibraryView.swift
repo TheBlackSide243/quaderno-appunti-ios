@@ -113,7 +113,10 @@ struct LibraryView: View {
         }
         .onChange(of: phase) { _, p in
             if p == .background { backup.backupIfAuto(library, open: router.open?.notebookID) }
-            if p == .active { backup.backupIfAuto(library, open: router.open?.notebookID) }
+            if p == .active {
+                backup.backupIfAuto(library, open: router.open?.notebookID)
+                Task { await SharedNotebooks.shared.syncAll(library) }
+            }
         }
         .task {
             if !introSeen && !Demo.enabled { router.showIntro = true }
@@ -121,6 +124,7 @@ struct LibraryView: View {
             Indexer.shared.catchUp(library.notebooks)
             Spotlight.shared.reindexAll(library.notebooks)
             await Demo.route(library: library, router: router)
+            await SharedNotebooks.shared.syncAll(library)
         }
     }
 }
@@ -157,6 +161,7 @@ struct ShelfView: View {
     @State private var renamingTag: String?
     @State private var confirmDeleteTag: String?
     @State private var studying: Notebook?
+    @State private var sharing: ShareNotebookSheet.Mode?
     @Environment(\.openWindow) private var openWindow
 
     private var sort: SortOrder { SortOrder(rawValue: sortRaw) ?? .date }
@@ -237,6 +242,9 @@ struct ShelfView: View {
                 .pageSized()
         }
         .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
+        .sheet(item: $sharing) { m in
+            ShareNotebookSheet(mode: m).environment(library)
+        }
         .sheet(item: $studying) { nb in
             StudyView(notebook: nb, onUpdate: { library.updateCard(nb.id, $0) }, onDelete: { library.deleteCard(nb.id, $0) })
         }
@@ -414,6 +422,22 @@ struct ShelfView: View {
             if folder == nil {
                 Button { renamingFolder = nil; folderName = ""; askFolder = true } label: { Label("Cartella", systemImage: "folder.badge.plus") }
             }
+            Menu {
+                let y = Calendar.current.component(.year, from: Date())
+                ForEach([y, y + 1], id: \.self) { yr in
+                    Button(String(yr)) { makePlanner(yr) }
+                }
+            } label: { Label("Agenda", systemImage: "calendar") }
+            Button { sharing = .join } label: { Label("Apri un quaderno condiviso", systemImage: "person.2") }
+        }
+    }
+
+    /// A planner for the year, with its months and weeks, opened at once.
+    private func makePlanner(_ year: Int) {
+        busy = true
+        DispatchQueue.main.async {
+            if let nb = Planner.make(year, library: library, folder: folder) { router.open = OpenRequest(notebookID: nb.id) }
+            busy = false
         }
     }
 
@@ -552,6 +576,14 @@ struct ShelfView: View {
             Label(nb.favorite ? String(localized: "Togli dai preferiti") : String(localized: "Aggiungi ai preferiti"), systemImage: nb.favorite ? "star.slash" : "star")
         }
         Button { newName = nb.title; renaming = nb } label: { Label("Rinomina", systemImage: "pencil") }
+        if SharedNotebooks.shared.isShared(nb.id) {
+            Menu {
+                Button { Task { await SharedNotebooks.shared.sync(nb.id, library: library) } } label: { Label("Sincronizza adesso", systemImage: "arrow.triangle.2.circlepath") }
+                Button(role: .destructive) { SharedNotebooks.shared.stopSharing(nb.id) } label: { Label("Smetti di sincronizzare", systemImage: "person.2.slash") }
+            } label: { Label("Condiviso", systemImage: "person.2.fill") }
+        } else if !nb.isText {
+            Button { sharing = .share(nb) } label: { Label("Condividi con altre persone", systemImage: "person.2") }
+        }
         if let cards = nb.cards, !cards.isEmpty {
             let due = cards.filter { $0.isDue() }.count
             Button { studying = nb } label: {
