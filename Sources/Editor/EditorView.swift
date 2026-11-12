@@ -31,6 +31,7 @@ struct EditorView: View {
     @State private var studying = false
     @State private var showStickers = false
     @State private var showLayers = false
+    @State private var showAssistant = false
     /// Set when the editor is the whole window (iPad): closing it closes the window.
     private var onClose: (() -> Void)?
 
@@ -112,6 +113,24 @@ struct EditorView: View {
                 .padding(.bottom, 10)
                 VStack(spacing: 8) {
                     ErrorBanner(error: $error)
+                    if model.checkingSpelling {
+                        Label("Controllo l'ortografia…", systemImage: "textformat.abc.dottedunderline")
+                            .font(.footnote.weight(.semibold)).foregroundStyle(Theme.text)
+                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                    } else if !model.misses.isEmpty {
+                        HStack(spacing: 10) {
+                            Text(model.misses.count == 1 ? String(localized: "1 parola da controllare: toccala") : String(localized: "\(model.misses.count) parole da controllare: toccale"))
+                                .font(.footnote.weight(.semibold)).foregroundStyle(Theme.bg)
+                            Button { model.clearMisses() } label: {
+                                Text("Fine").font(.footnote.weight(.bold)).foregroundStyle(Theme.accent)
+                                    .padding(.horizontal, 10).padding(.vertical, 4)
+                                    .background(Theme.bg, in: Capsule())
+                            }
+                        }
+                        .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 6)
+                        .background(Theme.bad, in: Capsule())
+                    }
                     if let p = model.picking {
                         HStack(spacing: 10) {
                             Image(systemName: "rectangle.dashed").foregroundStyle(Theme.bg)
@@ -146,7 +165,7 @@ struct EditorView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if !model.presenting {
-                    ToolStrip(model: model, onPhoto: { showPhotos = true }, onStickers: { showStickers = true }, onLayers: { showLayers = true })
+                    ToolStrip(model: model, onPhoto: { showPhotos = true }, onStickers: { showStickers = true }, onLayers: { showLayers = true }, onAssistant: { showAssistant = true })
                 }
             }
             .animation(.easeOut(duration: 0.18), value: model.selected?.id)
@@ -187,6 +206,20 @@ struct EditorView: View {
                     .presentationDetents([.medium, .large])
             }
             .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
+            .sheet(isPresented: $showAssistant) {
+                AssistantView(model: model)
+                    .presentationDetents([.large])
+            }
+            .confirmationDialog(model.missChosen.map { "«\($0.word)»" } ?? "", isPresented: Binding(get: { model.missChosen != nil }, set: { if !$0 { model.missChosen = nil } }),
+                                titleVisibility: .visible, presenting: model.missChosen) { m in
+                ForEach(m.guesses, id: \.self) { g in
+                    Button("Scrivi «\(g)»") { model.fix(m, with: g) }
+                }
+                Button("Va bene così") { model.drop(m) }
+                Button("Annulla", role: .cancel) {}
+            } message: { m in
+                Text(m.guesses.isEmpty ? String(localized: "Il dizionario non conosce questa parola e non ha suggerimenti.") : String(localized: "Il dizionario non conosce questa parola. La correzione viene scritta come testo al suo posto."))
+            }
             .sheet(isPresented: $showLayers) {
                 LayersView(model: model)
                     .presentationDetents([.medium, .large])
@@ -261,6 +294,7 @@ struct EditorView: View {
         case "tape": model.select(.tape)
         case "stickers": showStickers = true
         case "layers": showLayers = true
+        case "assistant": showAssistant = true
         default: break
         }
     }
@@ -371,6 +405,8 @@ struct EditorView: View {
             } label: { Label("Copri di nuovo tutti i nastri", systemImage: "rectangle.on.rectangle") }
             Button { model.startPicking(.inkText) } label: { Label("Testo dalla scrittura", systemImage: "text.viewfinder") }
             Button { model.setPresenting(true) } label: { Label("Presentazione", systemImage: "play.rectangle") }
+            Button { Task { await model.checkSpelling() } } label: { Label("Controlla l'ortografia", systemImage: "textformat.abc.dottedunderline") }
+            Button { showAssistant = true } label: { Label("Assistente (riassunti, quiz, domande)", systemImage: "sparkles") }
         }
         Section("Aggiungi") {
             Button { showStickers = true } label: { Label("Adesivi", systemImage: "seal") }

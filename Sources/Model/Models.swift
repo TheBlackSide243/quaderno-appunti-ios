@@ -281,6 +281,11 @@ struct Flashcard: Codable, Identifiable, Hashable {
     var ease: Double = 2.5
     var reps = 0
     var lapses = 0
+    /// Cards written as text (a quiz made by the assistant) instead of parts of a page.
+    var question: String?
+    var answer: String?
+
+    var isText: Bool { question != nil }
 
     enum Grade: Int, CaseIterable, Identifiable {
         case again, hard, good, easy

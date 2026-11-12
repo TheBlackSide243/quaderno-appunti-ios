@@ -159,6 +159,54 @@ final class Indexer: @unchecked Sendable {
         }
     }
 
+    /// The words of some handwriting with where each one is, read as written (without the
+    /// language correction), for the spelling check.
+    func words(_ d: PKDrawing) async -> [(String, CGRect)] {
+        await withCheckedContinuation { cont in
+            queue.async {
+                cont.resume(returning: autoreleasepool { self.readWords(d) })
+            }
+        }
+    }
+
+    private func readWords(_ d: PKDrawing) -> [(String, CGRect)] {
+        guard !d.strokes.isEmpty else { return [] }
+        let bounds = d.bounds.insetBy(dx: -12, dy: -12)
+        guard bounds.width > 4, bounds.height > 4 else { return [] }
+        let scale = min(2.5, 3000 / max(bounds.width, bounds.height))
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = scale
+        fmt.opaque = true
+        var ink = UIImage()
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent { ink = d.image(from: bounds, scale: scale) }
+        let img = UIGraphicsImageRenderer(size: bounds.size, format: fmt).image { r in
+            UIColor.white.setFill()
+            r.fill(CGRect(origin: .zero, size: bounds.size))
+            ink.draw(in: CGRect(origin: .zero, size: bounds.size))
+        }
+        guard let cg = img.cgImage else { return [] }
+        let req = VNRecognizeTextRequest()
+        req.recognitionLevel = .accurate
+        req.usesLanguageCorrection = false
+        if let supported = try? req.supportedRecognitionLanguages() {
+            let langs = ["it-IT", "en-US"].filter { supported.contains($0) }
+            if !langs.isEmpty { req.recognitionLanguages = langs }
+        }
+        do { try VNImageRequestHandler(cgImage: cg, options: [:]).perform([req]) } catch { return [] }
+        var out: [(String, CGRect)] = []
+        for obs in req.results ?? [] {
+            guard let cand = obs.topCandidates(1).first else { continue }
+            let s = cand.string
+            s.enumerateSubstrings(in: s.startIndex..<s.endIndex, options: .byWords) { w, r, _, _ in
+                guard let w, let box = try? cand.boundingBox(for: r)?.boundingBox else { return }
+                // Vision measures from the bottom left, in parts of the picture
+                out.append((w, CGRect(x: bounds.minX + box.minX * bounds.width, y: bounds.minY + (1 - box.maxY) * bounds.height,
+                                      width: box.width * bounds.width, height: box.height * bounds.height)))
+            }
+        }
+        return out
+    }
+
     /// Handwriting recognition of the ink alone, drawn black on white.
     private func recognize(_ d: PKDrawing, size: CGSize) -> String {
         guard !d.strokes.isEmpty else { return "" }

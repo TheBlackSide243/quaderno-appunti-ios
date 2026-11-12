@@ -160,6 +160,10 @@ final class EditorModel {
         snapShapes = UserDefaults.standard.object(forKey: "snapShapes") as? Bool ?? true
         canvas.snapShapes = snapShapes
         canvas.onPick = { [weak self] r in self?.picked(r) }
+        canvas.onSpellTap = { [weak self] i in
+            guard let self, self.misses.indices.contains(i) else { return }
+            self.missChosen = self.misses[i]
+        }
         canvas.onSaved = { [weak self] pg in self?.pageSaved(pg) }
         canvas.onSelection = { [weak self] item in self?.selected = item }
         canvas.onUndoChange = { [weak self] in
@@ -195,6 +199,7 @@ final class EditorModel {
     func showPage() {
         guard notebook.pages.indices.contains(pageIndex) else { return }
         if picking != nil { endPicking() }
+        misses = []
         canvas.load(notebook, page)
         layerID = canvas.layerID
         canvas.pullLabels = notebook.isBoard ? (nil, nil) :
@@ -376,7 +381,59 @@ final class EditorModel {
         }
     }
 
+    // MARK: Spelling
+
+    /// Handwritten words the dictionary does not know, marked on the page.
+    var misses: [SpellCheck.Miss] = []
+    var checkingSpelling = false
+    /// The marked word tapped, to choose a correction.
+    var missChosen: SpellCheck.Miss?
+
+    func checkSpelling() async {
+        guard !checkingSpelling else { return }
+        canvas.saveNow()
+        checkingSpelling = true
+        let pageID = page.id
+        let words = await Indexer.shared.words(canvas.canvas.drawing)
+        checkingSpelling = false
+        guard page.id == pageID else { return }
+        misses = SpellCheck.misses(words)
+        canvas.showMisspelled(misses.map(\.rect))
+        if misses.isEmpty { notice = String(localized: "Nessun errore trovato nella scrittura di questa pagina.") }
+    }
+
+    /// Writes the correction as typed text in place of the handwritten word.
+    func fix(_ m: SpellCheck.Miss, with word: String) {
+        canvas.removeStrokes(in: m.rect.insetBy(dx: -2, dy: -2))
+        canvas.addTextBox(word, in: m.rect.insetBy(dx: -4, dy: -6), fontSize: Double(min(40, max(12, m.rect.height * 0.8))).rounded())
+        drop(m)
+    }
+
+    func drop(_ m: SpellCheck.Miss) {
+        misses.removeAll { $0.id == m.id }
+        canvas.showMisspelled(misses.map(\.rect))
+    }
+
+    func clearMisses() {
+        misses = []
+        canvas.showMisspelled([])
+    }
+
     // MARK: Flashcards
+
+    /// Questions and answers written by the assistant, as flashcards of this page.
+    func addTextCards(_ list: [NoteAI.QA]) {
+        guard !list.isEmpty else { return }
+        var cards = notebook.cards ?? []
+        for qa in list {
+            var c = Flashcard(page: page.id, front: .zero, back: .zero)
+            c.question = qa.question
+            c.answer = qa.answer
+            cards.append(c)
+        }
+        notebook.cards = cards
+        library.save(notebook, touch: false)
+    }
 
     var cards: [Flashcard] { notebook.cards ?? [] }
     var dueCards: Int { cards.filter { $0.isDue() }.count }

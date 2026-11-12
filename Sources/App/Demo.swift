@@ -27,6 +27,7 @@ enum Demo {
         case "tape", "study": open("Storia moderna")
         case "board": open("Brainstorming")
         case "layers": open("Analisi 2")
+        case "assistant": open("Dispensa termodinamica")
         case "textdoc": open("Relazione di laboratorio")
         case "stickers": open("Idee progetto")
         case "pdf", "ocr": open("Dispensa termodinamica")

@@ -7,6 +7,7 @@ struct ToolStrip: View {
     let onPhoto: () -> Void
     let onStickers: () -> Void
     let onLayers: () -> Void
+    let onAssistant: () -> Void
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -19,6 +20,7 @@ struct ToolStrip: View {
                 toolButton("photo", label: String(localized: "Foto"), on: false) { onPhoto() }
                 toolButton("seal", label: String(localized: "Adesivi"), on: false) { onStickers() }
                 toolButton(model.layers.count > 1 ? "square.3.layers.3d.top.filled" : "square.3.layers.3d", label: String(localized: "Livelli"), on: model.layers.count > 1) { onLayers() }
+                toolButton("sparkles", label: String(localized: "Assistente"), on: false) { onAssistant() }
                 toolButton("ruler", label: String(localized: "Righello"), on: model.ruler) { model.toggleRuler() }
                 toolButton("waveform", label: String(localized: "Registrazione audio"), on: model.audio.panel || model.audio.recording) {
                     model.audio.panel.toggle()
