@@ -281,7 +281,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
             let fade = CATransition()
             fade.type = .fade
             fade.duration = 0.16
-            layer.add(fade, forKey: "page")
+            self.layer.add(fade, forKey: "page")
         }
         notebook = nb
         page = pg
