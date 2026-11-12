@@ -40,7 +40,7 @@
 "Cerca" = "Search";
 "Cerca in questo quaderno" = "Search this notebook";
 "Cerca negli appunti" = "Search your notes";
-"Cerca nei titoli, nella scrittura a mano, nei testi e nei PDF. La scrittura viene letta sul telefono qualche secondo dopo che hai finito una pagina." = "Search titles, handwriting, text and PDFs. Handwriting is read on the phone a few seconds after you finish a page.";
+"Cerca nei titoli, nella scrittura a mano, nei testi e nei PDF. La scrittura viene letta sul dispositivo qualche secondo dopo che hai finito una pagina." = "Search titles, handwriting, text and PDFs. Handwriting is read on this device a few seconds after you finish a page.";
 "Cerca nel quaderno" = "Search the notebook";
 "Cestino" = "Trash";
 "Chiudi" = "Close";
@@ -411,7 +411,7 @@
 "Assistente" = "Assistant";
 "L'assistente usa Apple Intelligence" = "The assistant uses Apple Intelligence";
 "Funziona sul dispositivo, senza internet e senza mandare gli appunti a nessuno. Il controllo dell'ortografia (menu … → Studio) funziona anche senza." = "It works on the device, without internet and without sending your notes to anyone. The spelling check (… menu → Study) works without it too.";
-"Sui tuoi appunti, sul telefono" = "On your notes, on the phone";
+"Sui tuoi appunti, sul dispositivo" = "On your notes, on this device";
 "Riassumi la pagina" = "Summarise the page";
 "Riassumi il quaderno" = "Summarise the notebook";
 "Quiz sulla pagina" = "Quiz on the page";

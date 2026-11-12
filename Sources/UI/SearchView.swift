@@ -25,7 +25,7 @@ struct SearchView: View {
                 if query.trimmingCharacters(in: .whitespaces).isEmpty {
                     Section {
                         Label {
-                            Text("Cerca nei titoli, nella scrittura a mano, nei testi e nei PDF. La scrittura viene letta sul telefono qualche secondo dopo che hai finito una pagina.")
+                            Text("Cerca nei titoli, nella scrittura a mano, nei testi e nei PDF. La scrittura viene letta sul dispositivo qualche secondo dopo che hai finito una pagina.")
                                 .font(.footnote).foregroundStyle(Theme.sub)
                         } icon: {
                             Image(systemName: "text.viewfinder").foregroundStyle(Theme.accent)
