@@ -74,6 +74,10 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 - **Forme perfette**: una linea, un rettangolo, un triangolo o un cerchio disegnati a mano diventano
   puliti tenendo ferma la penna un attimo alla fine. **Testo dalla scrittura**: un riquadro su una
   parte scritta a mano la trasforma in testo, da correggere, copiare o mettere al posto della scrittura.
+- **Adesivi**: un album con 22 adesivi pronti e quelli che crei tu con un riquadro su qualsiasi
+  parte della pagina, con lo sfondo trasparente. **Lavagna infinita**: una sola pagina che si
+  allarga mentre scrivi vicino ai bordi. Su iPad un quaderno si apre anche in una **finestra**
+  sua, per tenerne due affiancati.
 - **Testo e foto** sulla pagina: riquadri di testo (dimensione, grassetto, colore) e immagini,
   da trascinare e ridimensionare; **Incolla** mette sulla pagina il testo o l'immagine copiati.
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in
