@@ -29,14 +29,48 @@ struct EditorView: View {
     @State private var newTitle = ""
     @State private var transcribing: Recording?
     @State private var studying = false
+    @State private var showStickers = false
+    /// Set when the editor is the whole window (iPad): closing it closes the window.
+    private var onClose: (() -> Void)?
 
-    init(library: Library, notebook: Notebook, page: Int?) {
+    init(library: Library, notebook: Notebook, page: Int?, onClose: (() -> Void)? = nil) {
         _model = State(initialValue: EditorModel(library: library, notebook: notebook, page: page))
+        self.onClose = onClose
+    }
+
+    private func leave() {
+        model.close()
+        if let onClose { onClose() } else { dismiss() }
     }
 
     private var regular: Bool { hSize == .regular }
 
     var body: some View {
+        if model.openElsewhere {
+            openElsewhereView
+        } else {
+            main
+        }
+    }
+
+    /// The same notebook is open in another window: writing in both would lose work.
+    private var openElsewhereView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "macwindow.on.rectangle").font(.system(size: 50)).foregroundStyle(Theme.accent)
+            Text("«\(model.notebook.title)» è già aperto in un'altra finestra.")
+                .font(.headline).foregroundStyle(Theme.text).multilineTextAlignment(.center)
+            Text("Chiudilo là per aprirlo qui: scrivere nello stesso quaderno da due finestre farebbe perdere le modifiche.")
+                .font(.subheadline).foregroundStyle(Theme.sub).multilineTextAlignment(.center)
+            Button("Chiudi") { leave() }
+                .buttonStyle(.borderedProminent).tint(Theme.accent).foregroundStyle(Theme.bg)
+        }
+        .padding(30)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.bg)
+        .preferredColorScheme(.dark)
+    }
+
+    private var main: some View {
         dialogs
             .onChange(of: phase) { _, p in
                 if p != .active { model.canvas.saveNow() }
@@ -70,7 +104,7 @@ struct EditorView: View {
                             .padding(.horizontal, 12)
                             .padding(.bottom, 2)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
-                    } else if !regular {
+                    } else if !regular && !model.notebook.isBoard {
                         PageNav(model: model, onPages: { showPages = true })
                     }
                 }
@@ -111,7 +145,7 @@ struct EditorView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if !model.presenting {
-                    ToolStrip(model: model, onPhoto: { showPhotos = true })
+                    ToolStrip(model: model, onPhoto: { showPhotos = true }, onStickers: { showStickers = true })
                 }
             }
             .animation(.easeOut(duration: 0.18), value: model.selected?.id)
@@ -152,6 +186,10 @@ struct EditorView: View {
                     .presentationDetents([.medium, .large])
             }
             .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
+            .sheet(isPresented: $showStickers) {
+                StickerSheet(onPick: { model.addImage($0, sticker: true) }, onMake: { model.startPicking(.sticker) })
+                    .presentationDetents([.medium, .large])
+            }
             .sheet(isPresented: $studying) {
                 StudyView(notebook: model.notebook, onUpdate: { model.updateCard($0) }, onDelete: { model.deleteCard($0) },
                           onOpen: { c in if let i = model.notebook.pages.firstIndex(where: { $0.id == c.page }) { model.go(to: i) } })
@@ -216,6 +254,7 @@ struct EditorView: View {
             studying = true
         case "present": model.setPresenting(true)
         case "tape": model.select(.tape)
+        case "stickers": showStickers = true
         default: break
         }
     }
@@ -225,10 +264,7 @@ struct EditorView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarLeading) {
-            Button {
-                model.close()
-                dismiss()
-            } label: {
+            Button { leave() } label: {
                 Image(systemName: "chevron.backward").fontWeight(.semibold)
             }
             .accessibilityLabel("Indietro")
@@ -242,7 +278,7 @@ struct EditorView: View {
         }
         ToolbarItem(placement: .principal) {
             HStack(spacing: 10) {
-                if regular {
+                if regular && !model.notebook.isBoard {
                     Button { model.previous() } label: { Image(systemName: "chevron.left") }
                         .disabled(model.pageIndex == 0)
                 }
@@ -257,12 +293,18 @@ struct EditorView: View {
                             Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
                         }
                         .foregroundStyle(Theme.text)
-                        Text("Pagina \(model.pageIndex + 1) di \(model.notebook.pages.count)")
-                            .font(.caption2.monospacedDigit()).foregroundStyle(Theme.sub)
+                        Group {
+                            if model.notebook.isBoard {
+                                Text("Lavagna")
+                            } else {
+                                Text("Pagina \(model.pageIndex + 1) di \(model.notebook.pages.count)")
+                            }
+                        }
+                        .font(.caption2.monospacedDigit()).foregroundStyle(Theme.sub)
                     }
                     .frame(maxWidth: regular ? 220 : 130)
                 }
-                if regular {
+                if regular && !model.notebook.isBoard {
                     Button { model.next() } label: {
                         Image(systemName: model.pageIndex + 1 < model.notebook.pages.count ? "chevron.right" : "plus")
                     }
@@ -276,7 +318,7 @@ struct EditorView: View {
             Button { model.canvas.redo() } label: { Image(systemName: "arrow.uturn.forward") }
                 .disabled(!model.canRedo)
                 .accessibilityLabel("Ripeti")
-            if regular {
+            if regular && !model.notebook.isBoard {
                 Button { model.toggleBookmark(model.pageIndex) } label: {
                     Image(systemName: model.page.isBookmarked ? "bookmark.fill" : "bookmark")
                 }
@@ -325,7 +367,8 @@ struct EditorView: View {
             Button { model.setPresenting(true) } label: { Label("Presentazione", systemImage: "play.rectangle") }
         }
         Section("Aggiungi") {
-            if !regular {
+            Button { showStickers = true } label: { Label("Adesivi", systemImage: "seal") }
+            if !regular && !model.notebook.isBoard {
                 Menu {
                     ForEach(PageTemplate.allCases) { t in
                         Button(t.label) { model.addPage(after: model.pageIndex, template: t) }
@@ -335,10 +378,12 @@ struct EditorView: View {
             Button {
                 if !model.paste() { error = String(localized: "Negli appunti del telefono non c'è niente da incollare (testo o immagine).") }
             } label: { Label("Incolla", systemImage: "doc.on.clipboard") }
-            if ScannerView.isSupported {
+            if ScannerView.isSupported && !model.notebook.isBoard {
                 Button { showScanner = true } label: { Label("Scansiona pagine", systemImage: "doc.viewfinder") }
             }
-            Button { showPDFPicker = true } label: { Label("Pagine da un PDF", systemImage: "doc.richtext") }
+            if !model.notebook.isBoard {
+                Button { showPDFPicker = true } label: { Label("Pagine da un PDF", systemImage: "doc.richtext") }
+            }
             Button { model.audio.panel = true } label: { Label("Registrazione audio", systemImage: "waveform") }
         }
         Section("Pagina") {

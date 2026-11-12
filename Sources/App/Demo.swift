@@ -25,6 +25,8 @@ enum Demo {
         switch s {
         case "editor", "pages", "present": open("Fisica 1")
         case "tape", "study": open("Storia moderna")
+        case "board": open("Brainstorming")
+        case "stickers": open("Idee progetto")
         case "pdf", "ocr": open("Dispensa termodinamica")
         case "shapes": open("Fisica 1", page: 1)
         case "trash":
@@ -147,6 +149,37 @@ enum Demo {
         }
         storia.modified = Date().addingTimeInterval(-2 * hour)
         library.save(storia, touch: false)
+
+        // A whiteboard with a flow of ideas spread wide.
+        var lavagna = library.create(title: "Brainstorming", cover: 7, style: .terrazzo, template: .dotted, paper: .white, format: .a4Portrait, folder: work, board: true)
+        do {
+            let p = lavagna.pages[0]
+            var d: [PKStroke] = []
+            let ink = UIColor(hex: "1C1C20"), blue = UIColor(hex: "1D4ED8"), orange = UIColor(hex: "EA580C")
+            let boxes: [(CGRect, String, String)] = [
+                (CGRect(x: 120, y: 160, width: 260, height: 120), "Problema", "DC2626"),
+                (CGRect(x: 560, y: 120, width: 300, height: 120), "Idee", "1D4ED8"),
+                (CGRect(x: 560, y: 420, width: 300, height: 120), "Prototipo", "15803D"),
+                (CGRect(x: 1040, y: 260, width: 300, height: 120), "Test con gli utenti", "7C3AED"),
+            ]
+            var items: [PageItem] = [text("Nuova app per lo studio", x: 120, y: 50, w: 600, size: 34, color: "1C1C20", bold: true)]
+            for (r, label, hex) in boxes {
+                d.append(wobblyRect(r, color: UIColor(hex: hex), width: 2.4, rng: &rng))
+                items.append(text(label, x: r.minX + 18, y: r.minY + 16, w: r.width - 36, size: 22, color: hex, bold: true))
+                d += writeLine(x0: r.minX + 20, x1: r.maxX - 30, baseline: r.minY + 88, size: 6, color: ink, rng: &rng)
+            }
+            d += arrow(from: CGPoint(x: 384, y: 210), to: CGPoint(x: 552, y: 180), color: blue)
+            d += arrow(from: CGPoint(x: 710, y: 244), to: CGPoint(x: 710, y: 412), color: blue)
+            d += arrow(from: CGPoint(x: 866, y: 470), to: CGPoint(x: 1032, y: 330), color: orange)
+            d += arrow(from: CGPoint(x: 1190, y: 386), to: CGPoint(x: 870, y: 520), color: orange)
+            d.append(ellipse(center: CGPoint(x: 300, y: 560), rx: 150, ry: 70, color: orange, width: 2.2, rng: &rng))
+            items.append(text("Domande aperte?", x: 190, y: 542, w: 220, size: 20, color: "EA580C", bold: true))
+            for k in 0..<4 { d += writeLine(x0: 1040, x1: 1460, baseline: 520 + CGFloat(k) * 26, size: 6.5, color: ink, rng: &rng) }
+            Store.saveDrawing(PKDrawing(strokes: d), lavagna.id, p.id)
+            Store.saveItems(items, lavagna.id, p.id)
+        }
+        lavagna.modified = Date().addingTimeInterval(-4 * hour)
+        library.save(lavagna, touch: false)
 
         var chimica = library.create(title: "Chimica", cover: 2, style: .leaves, template: .grid, paper: .white, format: .a4Portrait, folder: uni)
         chimica.modified = Date().addingTimeInterval(-80 * hour)

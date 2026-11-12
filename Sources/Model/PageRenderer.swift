@@ -182,6 +182,43 @@ enum PageRenderer {
         }
     }
 
+    /// One repeating piece of a ruling, for the paper of a whiteboard (which can be too large to draw
+    /// as one picture).
+    static func tile(_ t: PageTemplate, paper: Paper) -> UIImage {
+        let side: CGFloat
+        switch t {
+        case .lined, .cornell, .checklist: side = 24
+        case .narrow: side = 18
+        default: side = 20
+        }
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = 4
+        fmt.opaque = true
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: fmt).image { r in
+            let c = r.cgContext
+            c.setFillColor(paper.uiColor.cgColor)
+            c.fill(CGRect(x: 0, y: 0, width: side, height: side))
+            switch t {
+            case .grid:
+                c.setStrokeColor(lineColor.withAlphaComponent(0.5).cgColor)
+                c.setLineWidth(0.5)
+                c.move(to: CGPoint(x: 0.25, y: 0)); c.addLine(to: CGPoint(x: 0.25, y: side))
+                c.move(to: CGPoint(x: 0, y: 0.25)); c.addLine(to: CGPoint(x: side, y: 0.25))
+                c.strokePath()
+            case .dotted:
+                c.setFillColor(lineColor.cgColor)
+                c.fillEllipse(in: CGRect(x: side / 2 - 0.9, y: side / 2 - 0.9, width: 1.8, height: 1.8))
+            case .lined, .narrow, .cornell, .checklist:
+                c.setStrokeColor(lineColor.cgColor)
+                c.setLineWidth(0.6)
+                c.move(to: CGPoint(x: 0, y: side - 0.3)); c.addLine(to: CGPoint(x: side, y: side - 0.3))
+                c.strokePath()
+            case .blank, .music:
+                break
+            }
+        }
+    }
+
     /// Only the paper and the ruling/PDF, used behind the editor's canvas.
     static func background(_ nb: Notebook, _ page: PageInfo, scale: CGFloat) -> UIImage {
         let fmt = UIGraphicsImageRendererFormat()

@@ -278,6 +278,19 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         onUndoChange?()
     }
 
+    /// The page got bigger (a whiteboard growing): the content stays where it is.
+    func resize(_ pg: PageInfo) {
+        page = pg
+        paper.bounds = CGRect(origin: .zero, size: pg.size)
+        items.bounds = CGRect(origin: .zero, size: pg.size)
+        links.bounds = CGRect(origin: .zero, size: pg.size)
+        if bounds.width > 40, bounds.height > 40 {
+            let whole = min((bounds.width - 20) / pg.size.width, (bounds.height - 20) / pg.size.height)
+            if whole.isFinite, whole > 0 { canvas.minimumZoomScale = min(canvas.minimumZoomScale, whole * 0.9) }
+        }
+        updateContent()
+    }
+
     /// Redraws the paper (after the template changed).
     func reloadPaper(_ nb: Notebook, _ pg: PageInfo) {
         notebook = nb
@@ -288,6 +301,16 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
 
     private func renderPaper() {
         guard let nb = notebook, let pg = page else { return }
+        if nb.isBoard {
+            // a whiteboard can be huge: its paper is a pattern repeated, sharp at any size
+            if paperScale == 0 {
+                paperScale = 1
+                paper.image = nil
+                paper.backgroundColor = UIColor(patternImage: PageRenderer.tile(pg.template, paper: nb.paper))
+            }
+            return
+        }
+        paper.backgroundColor = nil
         // Sharp enough for the current zoom, capped at ~24 Mpx.
         let screen = window?.screen.scale ?? 2
         let maxScale = sqrt(24_000_000 / (pg.size.width * pg.size.height))
@@ -332,15 +355,19 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         guard let pg = page, bounds.width > 40, bounds.height > 40, pg.size.width > 0, pg.size.height > 0 else { return }
         let margin: CGFloat = fitWhole ? 8 : (bounds.width > 600 ? 28 : 10)
         var fit = (bounds.width - margin * 2) / pg.size.width
-        if fitWhole { fit = min(fit, (bounds.height - margin * 2) / pg.size.height) }
-        guard fit.isFinite, fit > 0 else { return }
+        let whole = min(fit, (bounds.height - margin * 2) / pg.size.height)
+        if fitWhole { fit = whole }
+        guard fit.isFinite, fit > 0, whole.isFinite, whole > 0 else { return }
+        let board = notebook?.isBoard == true
         let refit = fittedWidth != bounds.width || (fitWhole && fittedHeight != bounds.height)
         if refit {
             fittedWidth = bounds.width
             fittedHeight = bounds.height
-            canvas.minimumZoomScale = fit * 0.6
-            canvas.maximumZoomScale = fit * 6
-            canvas.zoomScale = fit
+            // a whiteboard opens at about 900 points across, and zooms out until it is all in view
+            let start = board && !fitWhole ? max(whole, bounds.width / 900) : fit
+            canvas.minimumZoomScale = board ? min(start, whole) * 0.9 : fit * 0.6
+            canvas.maximumZoomScale = start * 6
+            canvas.zoomScale = start
         }
         updateContent()
         if refit {
@@ -776,6 +803,30 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         setDrawingUndoable(d)
     }
 
+    /// What is inside an area (ink, text and pictures, without the paper and the tape) as a picture
+    /// with a transparent background; nil when the area is empty.
+    func cutout(_ r: CGRect) -> UIImage? {
+        guard let nb = notebook else { return nil }
+        let list = items.items.filter { $0.kind != .tape && $0.frame.intersects(r) }
+        let ink = canvas.drawing.strokes.filter { $0.renderBounds.intersects(r) }
+        guard !list.isEmpty || !ink.isEmpty else { return nil }
+        let scale: CGFloat = 3
+        var inkImage = UIImage()
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+            inkImage = PKDrawing(strokes: ink).image(from: r, scale: scale)
+        }
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = scale
+        fmt.opaque = false
+        return UIGraphicsImageRenderer(size: r.size, format: fmt).image { ctx in
+            ctx.cgContext.saveGState()
+            ctx.cgContext.translateBy(x: -r.minX, y: -r.minY)
+            PageRenderer.drawItems(nb, list)
+            ctx.cgContext.restoreGState()
+            inkImage.draw(in: CGRect(origin: .zero, size: r.size))
+        }
+    }
+
     /// A text box over an area, for typed text that replaces handwriting.
     func addTextBox(_ text: String, in r: CGRect, fontSize: Double) {
         var item = PageItem(kind: .text, x: r.minX, y: r.minY, w: max(60, r.width), h: max(30, r.height))
@@ -892,11 +943,12 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         items.add(item, edit: text == nil)
     }
 
-    func addImage(_ img: UIImage) {
-        guard let nb = notebook, let pg = page, let (name, size) = Store.saveImage(img, nb.id) else { return }
+    /// A picture in the middle of the screen; stickers keep their transparency and come in small.
+    func addImage(_ img: UIImage, sticker: Bool = false) {
+        guard let nb = notebook, let pg = page, let (name, size) = Store.saveImage(img, nb.id, keepAlpha: sticker) else { return }
         if drawMode { drawMode = false }
         let c = visibleCenter
-        let w = min(pg.size.width * 0.6, size.width)
+        let w = sticker ? min(140, size.width / 2) : min(pg.size.width * 0.6, size.width)
         let h = w * size.height / max(1, size.width)
         var item = PageItem(kind: .image, x: c.x - w / 2, y: c.y - h / 2, w: w, h: h)
         item.image = name
