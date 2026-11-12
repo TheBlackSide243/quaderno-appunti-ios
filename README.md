@@ -81,6 +81,10 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 - **Livelli** in ogni pagina, da aggiungere, nascondere, rinominare e riordinare. **Documenti di
   testo** scritti con la tastiera, con stili, grassetto, elenchi, elenchi da spuntare e colori,
   da esportare in PDF, RTF o testo semplice.
+- **Assistente** con Apple Intelligence sul dispositivo (iOS 26): riassunti della pagina o del
+  quaderno, quiz da aggiungere alle flashcard e risposte alle domande sugli appunti, con le
+  pagine citate. **Controllo dell'ortografia** della scrittura a mano: le parole sconosciute si
+  sottolineano e si correggono con un tocco.
 - **Testo e foto** sulla pagina: riquadri di testo (dimensione, grassetto, colore) e immagini,
   da trascinare e ridimensionare; **Incolla** mette sulla pagina il testo o l'immagine copiati.
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in
