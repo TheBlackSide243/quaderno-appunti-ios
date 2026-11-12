@@ -428,6 +428,13 @@ final class Library {
         save(nb, touch: false)
     }
 
+    /// Reads a notebook again from its folder (after a shared notebook got changes).
+    func reload(_ id: UUID) {
+        guard let data = try? Data(contentsOf: Store.meta(id)), let nb = try? Store.decoder.decode(Notebook.self, from: data) else { return }
+        if let i = notebooks.firstIndex(where: { $0.id == id }) { notebooks[i] = nb } else { notebooks.append(nb) }
+        refreshThumb(id)
+    }
+
     func updateCard(_ id: UUID, _ c: Flashcard) {
         guard var nb = notebook(id), let i = nb.cards?.firstIndex(where: { $0.id == c.id }) else { return }
         nb.cards?[i] = c

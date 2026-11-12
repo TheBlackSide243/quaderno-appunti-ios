@@ -245,6 +245,8 @@ struct Notebook: Codable, Identifiable, Hashable {
     var textDocument: Bool?
 
     var isText: Bool { textDocument ?? false }
+    /// Pages deleted, so a shared notebook does not get them back from the other people.
+    var deletedPages: [UUID]?
 
     var tagList: [String] { tags ?? [] }
 }

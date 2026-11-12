@@ -85,6 +85,8 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
   quaderno, quiz da aggiungere alle flashcard e risposte alle domande sugli appunti, con le
   pagine citate. **Controllo dell'ortografia** della scrittura a mano: le parole sconosciute si
   sottolineano e si correggono con un tocco.
+- **Quaderni condivisi** con altre persone attraverso una cartella condivisa di iCloud Drive,
+  aggiornati ogni pochi secondi. **Agende** dell'anno con i mesi e le settimane collegati tra loro.
 - **Testo e foto** sulla pagina: riquadri di testo (dimensione, grassetto, colore) e immagini,
   da trascinare e ridimensionare; **Incolla** mette sulla pagina il testo o l'immagine copiati.
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in

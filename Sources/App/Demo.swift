@@ -26,6 +26,8 @@ enum Demo {
         case "editor", "pages", "present": open("Fisica 1")
         case "tape", "study": open("Storia moderna")
         case "board": open("Brainstorming")
+        case "planner":
+            if let nb = Planner.make(2027, library: library, folder: nil) { router.open = OpenRequest(notebookID: nb.id, page: 1) }
         case "layers": open("Analisi 2")
         case "assistant": open("Dispensa termodinamica")
         case "textdoc": open("Relazione di laboratorio")
