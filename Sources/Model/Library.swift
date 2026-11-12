@@ -82,7 +82,8 @@ enum Store {
     }
 
     /// Saves a picture for a page, scaled down to at most 2400 px, and returns its file name.
-    static func saveImage(_ img: UIImage, _ nb: UUID) -> (String, CGSize)? {
+    /// With `keepAlpha` (stickers) the picture is kept as PNG, with its transparent parts.
+    static func saveImage(_ img: UIImage, _ nb: UUID, keepAlpha: Bool = false) -> (String, CGSize)? {
         ensureDirs(nb)
         let maxSide: CGFloat = 2400
         let s = img.size
@@ -90,9 +91,10 @@ enum Store {
         let target = CGSize(width: (s.width * k).rounded(), height: (s.height * k).rounded())
         let fmt = UIGraphicsImageRendererFormat()
         fmt.scale = 1
+        fmt.opaque = !keepAlpha
         let scaled = UIGraphicsImageRenderer(size: target, format: fmt).image { _ in img.draw(in: CGRect(origin: .zero, size: target)) }
-        guard let data = scaled.jpegData(compressionQuality: 0.85) else { return nil }
-        let name = UUID().uuidString + ".jpg"
+        guard let data = keepAlpha ? scaled.pngData() : scaled.jpegData(compressionQuality: 0.85) else { return nil }
+        let name = UUID().uuidString + (keepAlpha ? ".png" : ".jpg")
         do { try data.write(to: image(nb, name), options: .atomic) } catch { return nil }
         return (name, target)
     }
@@ -185,11 +187,13 @@ final class Library {
     // MARK: Notebooks
 
     @discardableResult
-    func create(title: String, cover: Int?, style: CoverStyle, template: PageTemplate, paper: Paper, format: PageFormat, folder: UUID?) -> Notebook {
+    func create(title: String, cover: Int?, style: CoverStyle, template: PageTemplate, paper: Paper, format: PageFormat, folder: UUID?, board: Bool = false) -> Notebook {
         let name = title.trimmingCharacters(in: .whitespaces)
+        let size = board ? Notebook.boardStart : format.size
         var nb = Notebook(title: name.isEmpty ? String(localized: "Senza titolo") : name, cover: cover, paper: paper, folderID: folder,
-                          pages: [PageInfo(template: template, size: format.size)])
+                          pages: [PageInfo(template: template, size: size)])
         nb.coverStyle = style
+        if board { nb.board = true }
         save(nb)
         refreshThumb(nb.id)
         return nb
@@ -417,6 +421,15 @@ final class Library {
         if nb.cards?.isEmpty == true { nb.cards = nil }
         save(nb, touch: false)
     }
+
+    // MARK: Windows
+
+    /// Notebooks open in an editor, in any window: the same one is never open twice.
+    private(set) var openNotebooks: Set<UUID> = []
+
+    func isOpen(_ id: UUID) -> Bool { openNotebooks.contains(id) }
+    func opened(_ id: UUID) { openNotebooks.insert(id) }
+    func closed(_ id: UUID) { openNotebooks.remove(id) }
 
     func toggleFavorite(_ id: UUID) {
         guard var nb = notebook(id) else { return }

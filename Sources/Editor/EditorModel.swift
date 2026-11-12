@@ -115,12 +115,14 @@ final class EditorModel {
         case cardFront
         case cardBack(CGRect)
         case inkText
+        case sticker
 
         var prompt: String {
             switch self {
             case .cardFront: String(localized: "Trascina un riquadro sulla domanda")
             case .cardBack: String(localized: "Ora trascina un riquadro sulla risposta")
             case .inkText: String(localized: "Trascina un riquadro sulla scrittura da leggere")
+            case .sticker: String(localized: "Trascina un riquadro su quello che diventa un adesivo")
             }
         }
     }
@@ -134,6 +136,10 @@ final class EditorModel {
         var lines = 1
     }
 
+    /// The notebook is already open in another window: this editor only says so.
+    let openElsewhere: Bool
+    @ObservationIgnored private var released = false
+
     @ObservationIgnored let canvas = PageCanvasView()
     let audio: AudioNotes
 
@@ -142,6 +148,9 @@ final class EditorModel {
         self.notebook = notebook
         self.pageIndex = min(max(0, page ?? notebook.lastPage), max(0, notebook.pages.count - 1))
         self.audio = AudioNotes(notebookID: notebook.id)
+        let elsewhere = library.isOpen(notebook.id)
+        openElsewhere = elsewhere
+        if !elsewhere { library.opened(notebook.id) }
         if UserDefaults.standard.object(forKey: "fingerDraws") != nil {
             fingerDraws = UserDefaults.standard.bool(forKey: "fingerDraws")
         } else {
@@ -184,8 +193,9 @@ final class EditorModel {
         guard notebook.pages.indices.contains(pageIndex) else { return }
         if picking != nil { endPicking() }
         canvas.load(notebook, page)
-        canvas.pullLabels = (pageIndex > 0 ? String(localized: "Pagina precedente") : nil,
-                             pageIndex + 1 < notebook.pages.count ? String(localized: "Pagina successiva") : String(localized: "Nuova pagina"))
+        canvas.pullLabels = notebook.isBoard ? (nil, nil) :
+            (pageIndex > 0 ? String(localized: "Pagina precedente") : nil,
+             pageIndex + 1 < notebook.pages.count ? String(localized: "Pagina successiva") : String(localized: "Nuova pagina"))
         selected = nil
     }
 
@@ -201,13 +211,36 @@ final class EditorModel {
     }
 
     private func pageSaved(_ pg: PageInfo) {
+        growBoardIfNeeded()
         library.save(notebook)
         if notebook.pages.first?.id == pg.id { library.refreshThumb(notebook.id) }
         pageVersion[pg.id, default: 0] += 1
         Indexer.shared.schedule(notebook, page: pg.id)
     }
 
+    /// A whiteboard gets bigger when the writing comes near its right or bottom edge.
+    private func growBoardIfNeeded() {
+        guard notebook.isBoard, notebook.pages.indices.contains(pageIndex) else { return }
+        let pg = notebook.pages[pageIndex]
+        var content = canvas.canvas.drawing.bounds
+        for it in canvas.items.items { content = content.union(it.frame) }
+        guard !content.isNull, !content.isEmpty else { return }
+        var w = pg.width, h = pg.height
+        let edge: Double = 320, step: Double = 1000
+        if Double(content.maxX) > w - edge { w = min(Notebook.boardMax, w + step) }
+        if Double(content.maxY) > h - edge { h = min(Notebook.boardMax, h + step) }
+        guard w != pg.width || h != pg.height else { return }
+        notebook.pages[pageIndex].width = w
+        notebook.pages[pageIndex].height = h
+        canvas.resize(notebook.pages[pageIndex])
+    }
+
     func close() {
+        guard !openElsewhere else { return }
+        if !released {
+            released = true
+            library.closed(notebook.id)
+        }
         audio.stopAll()
         canvas.saveNow()
         notebook.lastPage = pageIndex
@@ -326,6 +359,14 @@ final class EditorModel {
         case .inkText:
             endPicking()
             readInk(in: r)
+        case .sticker:
+            endPicking()
+            if let img = canvas.cutout(r) {
+                StickerStore.shared.add(img)
+                notice = String(localized: "Adesivo salvato: lo trovi tra gli adesivi.")
+            } else {
+                notice = String(localized: "In quel riquadro non c'è niente.")
+            }
         case nil:
             break
         }
@@ -422,6 +463,7 @@ final class EditorModel {
     }
 
     func next() {
+        guard !notebook.isBoard else { return }
         if pageIndex + 1 < notebook.pages.count { go(to: pageIndex + 1) } else { addPage(after: pageIndex, template: nil) }
     }
 
@@ -561,10 +603,10 @@ final class EditorModel {
         canvas.addText()
     }
 
-    func addImage(_ img: UIImage) {
+    func addImage(_ img: UIImage, sticker: Bool = false) {
         tools.tool = .hand
         drawMode = false
-        canvas.addImage(img)
+        canvas.addImage(img, sticker: sticker)
     }
 
     /// Puts what is on the clipboard on the page: a picture, or text in a new box. False if there is nothing.

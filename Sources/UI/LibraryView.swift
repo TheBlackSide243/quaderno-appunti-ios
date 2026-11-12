@@ -151,6 +151,7 @@ struct ShelfView: View {
     @State private var renamingTag: String?
     @State private var confirmDeleteTag: String?
     @State private var studying: Notebook?
+    @Environment(\.openWindow) private var openWindow
 
     private var sort: SortOrder { SortOrder(rawValue: sortRaw) ?? .date }
     private var regular: Bool { hSize == .regular }
@@ -538,6 +539,9 @@ struct ShelfView: View {
     @ViewBuilder
     private func menu(_ nb: Notebook) -> some View {
         Button { router.open = OpenRequest(notebookID: nb.id) } label: { Label("Apri", systemImage: "book") }
+        if UIApplication.shared.supportsMultipleScenes {
+            Button { openWindow(id: "notebook", value: nb.id) } label: { Label("Apri in una nuova finestra", systemImage: "macwindow.badge.plus") }
+        }
         Button { library.toggleFavorite(nb.id) } label: {
             Label(nb.favorite ? String(localized: "Togli dai preferiti") : String(localized: "Aggiungi ai preferiti"), systemImage: nb.favorite ? "star.slash" : "star")
         }

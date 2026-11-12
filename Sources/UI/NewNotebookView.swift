@@ -18,6 +18,7 @@ struct NewNotebookView: View {
     @State private var template: PageTemplate = .grid
     @State private var paper: Paper = .ivory
     @State private var format: PageFormat = .a4Portrait
+    @State private var board = false
     @State private var folderID: UUID?
     @FocusState private var titleFocused: Bool
 
@@ -140,9 +141,13 @@ struct NewNotebookView: View {
                         Button { paper = p } label: { if paper == p { Label(p.label, systemImage: "checkmark") } else { Text(p.label) } }
                     }
                 }
-                optionMenu(icon: "rectangle.portrait", text: format.label) {
+                optionMenu(icon: board ? "rectangle.expand.vertical" : "rectangle.portrait", text: board ? String(localized: "Lavagna infinita") : format.label) {
                     ForEach(PageFormat.allCases) { f in
-                        Button { format = f } label: { if format == f { Label(f.label, systemImage: "checkmark") } else { Text(f.label) } }
+                        Button { format = f; board = false } label: { if format == f && !board { Label(f.label, systemImage: "checkmark") } else { Text(f.label) } }
+                    }
+                    Divider()
+                    Button { board = true } label: {
+                        if board { Label("Lavagna infinita", systemImage: "checkmark") } else { Label("Lavagna infinita", systemImage: "rectangle.expand.vertical") }
                     }
                 }
             }
@@ -258,7 +263,7 @@ struct NewNotebookView: View {
     }
 
     private func create() {
-        let nb = library.create(title: title, cover: cover, style: style, template: template, paper: paper, format: format, folder: folderID)
+        let nb = library.create(title: title, cover: cover, style: style, template: template, paper: paper, format: format, folder: folderID, board: board)
         dismiss()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { onCreate(nb) }
     }

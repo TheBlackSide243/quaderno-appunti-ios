@@ -5,6 +5,7 @@ import UIKit
 struct ToolStrip: View {
     let model: EditorModel
     let onPhoto: () -> Void
+    let onStickers: () -> Void
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -15,6 +16,7 @@ struct ToolStrip: View {
                 separator
                 toolButton("textformat", label: String(localized: "Testo"), on: false) { model.addText() }
                 toolButton("photo", label: String(localized: "Foto"), on: false) { onPhoto() }
+                toolButton("seal", label: String(localized: "Adesivi"), on: false) { onStickers() }
                 toolButton("ruler", label: String(localized: "Righello"), on: model.ruler) { model.toggleRuler() }
                 toolButton("waveform", label: String(localized: "Registrazione audio"), on: model.audio.panel || model.audio.recording) {
                     model.audio.panel.toggle()

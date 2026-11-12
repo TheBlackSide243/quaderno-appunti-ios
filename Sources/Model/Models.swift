@@ -222,8 +222,18 @@ struct Notebook: Codable, Identifiable, Hashable {
     var recordings: [Recording]?
     /// Flashcards made from parts of the pages.
     var cards: [Flashcard]?
+    /// A whiteboard: one page that grows while you write (nil = an ordinary notebook).
+    var board: Bool?
+
+    var isBoard: Bool { board ?? false }
 
     var tagList: [String] { tags ?? [] }
+}
+
+extension Notebook {
+    /// The size a whiteboard starts with; it grows while you write near its edges.
+    static let boardStart = CGSize(width: 1600, height: 1100)
+    static let boardMax: Double = 20000
 }
 
 /// A sound recording of a notebook. Each stroke knows when it was written, so a tap on the
