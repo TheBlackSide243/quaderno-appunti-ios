@@ -68,9 +68,16 @@ enum NoteAI {
             if !words.isEmpty {
                 func score(_ s: Source) -> Int {
                     let f = Indexer.fold(s.text)
-                    return words.reduce(0) { $0 + f.components(separatedBy: $1).count - 1 }
+                    var n = 0
+                    for w in words { n += f.components(separatedBy: w).count - 1 }
+                    return n
                 }
-                list = list.map { ($0, score($0)) }.sorted { $0.1 > $1.1 || ($0.1 == $1.1 && $0.0.page < $1.0.page) }.map(\.0)
+                let scored: [(source: Source, score: Int)] = list.map { (source: $0, score: score($0)) }
+                let ordered = scored.sorted { a, b in
+                    if a.score != b.score { return a.score > b.score }
+                    return a.source.page < b.source.page
+                }
+                list = ordered.map { $0.source }
             }
         }
         var out = ""
