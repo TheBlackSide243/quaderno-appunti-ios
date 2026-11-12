@@ -25,7 +25,8 @@ enum CardImages {
                 full.draw(at: CGPoint(x: -area.minX, y: -area.minY))
                 if let cover {
                     let hide = cover.intersection(area).offsetBy(dx: -area.minX, dy: -area.minY)
-                    if !hide.isNull, hide.width > 0 {
+                    // only a real overlap: two boxes that just touch leave the question alone
+                    if !hide.isNull, hide.width > 8, hide.height > 8 {
                         UIColor(patternImage: ItemView.tapePattern(UIColor(hex: TapeColors.all[0]))).setFill()
                         UIBezierPath(roundedRect: hide, cornerRadius: 3).fill()
                         let q = "?" as NSString
