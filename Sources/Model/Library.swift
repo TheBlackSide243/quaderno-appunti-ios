@@ -73,12 +73,25 @@ enum Store {
         }
     }
 
-    static func removePageFiles(_ nb: UUID, _ page: UUID) {
-        for item in loadItems(nb, page) where item.kind == .image {
+    static func removePageFiles(_ nb: UUID, _ page: PageInfo) {
+        for item in loadItems(nb, page.id) where item.kind == .image {
             if let name = item.image { try? FileManager.default.removeItem(at: image(nb, name)) }
         }
-        try? FileManager.default.removeItem(at: drawing(nb, page))
-        try? FileManager.default.removeItem(at: items(nb, page))
+        for l in page.inkLayers { try? FileManager.default.removeItem(at: drawing(nb, l.id)) }
+        try? FileManager.default.removeItem(at: drawing(nb, page.id))
+        try? FileManager.default.removeItem(at: items(nb, page.id))
+    }
+
+    /// The ink of every visible layer of a page, bottom layer first.
+    static func loadInk(_ nb: UUID, _ page: PageInfo) -> PKDrawing {
+        let layers = page.inkLayers.filter { !$0.isHidden }
+        if layers.count == 1 { return loadDrawing(nb, layers[0].id) }
+        return PKDrawing(strokes: layers.flatMap { loadDrawing(nb, $0.id).strokes })
+    }
+
+    /// When the ink of a page last changed (any layer); nil = no ink saved.
+    static func inkStamp(_ nb: UUID, _ page: PageInfo) -> Date? {
+        page.inkLayers.compactMap { (try? drawing(nb, $0.id).resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate }.max()
     }
 
     /// Saves a picture for a page, scaled down to at most 2400 px, and returns its file name.
@@ -187,13 +200,19 @@ final class Library {
     // MARK: Notebooks
 
     @discardableResult
-    func create(title: String, cover: Int?, style: CoverStyle, template: PageTemplate, paper: Paper, format: PageFormat, folder: UUID?, board: Bool = false) -> Notebook {
+    func create(title: String, cover: Int?, style: CoverStyle, template: PageTemplate, paper: Paper, format: PageFormat, folder: UUID?,
+                board: Bool = false, text: Bool = false) -> Notebook {
         let name = title.trimmingCharacters(in: .whitespaces)
-        let size = board ? Notebook.boardStart : format.size
+        let size = board ? Notebook.boardStart : (text ? TextDoc.pageSize : format.size)
         var nb = Notebook(title: name.isEmpty ? String(localized: "Senza titolo") : name, cover: cover, paper: paper, folderID: folder,
                           pages: [PageInfo(template: template, size: size)])
         nb.coverStyle = style
         if board { nb.board = true }
+        if text {
+            nb.textDocument = true
+            nb.pages[0].template = .blank
+            TextDoc.save(NSAttributedString(string: "", attributes: TextDoc.bodyAttributes), nb.id)
+        }
         save(nb)
         refreshThumb(nb.id)
         return nb

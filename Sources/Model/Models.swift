@@ -187,6 +187,12 @@ struct PageInfo: Codable, Identifiable, Hashable {
     var height: Double
     /// nil = not bookmarked (optional so older notebooks still open).
     var bookmarked: Bool?
+    /// Layers of ink, bottom first; nil = one layer, stored in the page's own drawing file.
+    var layers: [InkLayer]?
+
+    /// The layers, always at least one. The first layer of every page has the page's id, so its ink
+    /// is in the same file as before layers existed.
+    var inkLayers: [InkLayer] { layers ?? [InkLayer(id: id, name: String(localized: "Livello 1"))] }
 
     var isBookmarked: Bool { bookmarked ?? false }
     var size: CGSize { CGSize(width: width, height: height) }
@@ -197,6 +203,15 @@ struct PageInfo: Codable, Identifiable, Hashable {
         self.height = Double(size.height)
         self.pdfIndex = pdfIndex
     }
+}
+
+/// A layer of ink on a page: a sheet of clear film that can be hidden or drawn on alone.
+struct InkLayer: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var name: String
+    var hidden: Bool?
+
+    var isHidden: Bool { hidden ?? false }
 }
 
 struct Notebook: Codable, Identifiable, Hashable {
@@ -226,6 +241,10 @@ struct Notebook: Codable, Identifiable, Hashable {
     var board: Bool?
 
     var isBoard: Bool { board ?? false }
+    /// A document of typed text instead of pages to write on (nil = a notebook).
+    var textDocument: Bool?
+
+    var isText: Bool { textDocument ?? false }
 
     var tagList: [String] { tags ?? [] }
 }

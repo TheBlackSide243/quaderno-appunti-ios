@@ -26,6 +26,8 @@ enum Demo {
         case "editor", "pages", "present": open("Fisica 1")
         case "tape", "study": open("Storia moderna")
         case "board": open("Brainstorming")
+        case "layers": open("Analisi 2")
+        case "textdoc": open("Relazione di laboratorio")
         case "stickers": open("Idee progetto")
         case "pdf", "ocr": open("Dispensa termodinamica")
         case "shapes": open("Fisica 1", page: 1)
@@ -104,6 +106,16 @@ enum Demo {
             }
             for k in 0..<3 { d += writeLine(x0: 80, x1: 520, baseline: 690 + CGFloat(k) * 26, size: 7, color: ink, rng: &rng) }
             Store.saveDrawing(PKDrawing(strokes: d), analisi.id, p.id)
+            // a second layer with the teacher's corrections, over the first
+            var notes = InkLayer(name: "Correzioni")
+            notes.hidden = nil
+            analisi.pages[0].layers = [InkLayer(id: p.id, name: "Appunti"), notes]
+            let red = UIColor(hex: "DC2626")
+            var c: [PKStroke] = []
+            c.append(ellipse(center: CGPoint(x: 230, y: 380), rx: 70, ry: 40, color: red, width: 2, rng: &rng))
+            c += writeLine(x0: 380, x1: 530, baseline: 560, size: 6.5, color: red, rng: &rng)
+            c += arrow(from: CGPoint(x: 420, y: 540), to: CGPoint(x: 300, y: 420), color: red)
+            Store.saveDrawing(PKDrawing(strokes: c), analisi.id, notes.id)
             Store.saveItems([
                 text("Integrali definiti", x: 76, y: 70, w: 400, size: 26, color: "1C1C20", bold: true),
                 text("∫ₐᵇ f(x) dx = F(b) − F(a)", x: 76, y: 120, w: 440, size: 22, color: "7C3AED"),
@@ -180,6 +192,38 @@ enum Demo {
         }
         lavagna.modified = Date().addingTimeInterval(-4 * hour)
         library.save(lavagna, touch: false)
+
+        // A typed document with headings and lists.
+        let relazione = library.create(title: "Relazione di laboratorio", cover: nil, style: .plain, template: .blank, paper: .white,
+                                       format: .a4Portrait, folder: uni, text: true)
+        do {
+            let s = NSMutableAttributedString()
+            func add(_ text: String, _ style: TextDoc.Style, bold: Bool = false, color: String = "1C1C20") {
+                var font = style.font
+                if bold, let d = font.fontDescriptor.withSymbolicTraits(.traitBold) { font = UIFont(descriptor: d, size: font.pointSize) }
+                s.append(NSAttributedString(string: text + "\n", attributes: [.font: font, .foregroundColor: UIColor(hex: color)]))
+            }
+            add("Misura dell'accelerazione di gravità", .title)
+            add("Gruppo 4 · 12 novembre", .body, color: "64748B")
+            add("Scopo", .heading)
+            add("Misurare g con un pendolo semplice, confrontando periodi di oscillazione con lunghezze diverse del filo.", .body)
+            add("Materiali", .heading)
+            add("• filo inestensibile e una sfera di acciaio", .body)
+            add("• cronometro digitale (risoluzione 0,01 s)", .body)
+            add("• metro a nastro", .body)
+            add("Procedimento", .heading)
+            add("1. Misurare la lunghezza del filo dal punto di sospensione al centro della sfera.", .body)
+            add("2. Spostare la sfera di circa 5° e lasciarla oscillare.", .body)
+            add("3. Cronometrare 10 oscillazioni complete e dividere per 10.", .body)
+            add("Da fare", .heading)
+            add("☑ raccogliere i dati", .body)
+            add("☐ calcolare l'incertezza", .body)
+            add("Risultato: g = 9,79 ± 0,05 m/s²", .body, bold: true, color: "1D4ED8")
+            TextDoc.save(s, relazione.id)
+            var r = relazione
+            r.modified = Date().addingTimeInterval(-5 * hour)
+            library.save(r, touch: false)
+        }
 
         var chimica = library.create(title: "Chimica", cover: 2, style: .leaves, template: .grid, paper: .white, format: .a4Portrait, folder: uni)
         chimica.modified = Date().addingTimeInterval(-80 * hour)

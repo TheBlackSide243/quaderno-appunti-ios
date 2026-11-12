@@ -30,6 +30,7 @@ struct EditorView: View {
     @State private var transcribing: Recording?
     @State private var studying = false
     @State private var showStickers = false
+    @State private var showLayers = false
     /// Set when the editor is the whole window (iPad): closing it closes the window.
     private var onClose: (() -> Void)?
 
@@ -145,7 +146,7 @@ struct EditorView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if !model.presenting {
-                    ToolStrip(model: model, onPhoto: { showPhotos = true }, onStickers: { showStickers = true })
+                    ToolStrip(model: model, onPhoto: { showPhotos = true }, onStickers: { showStickers = true }, onLayers: { showLayers = true })
                 }
             }
             .animation(.easeOut(duration: 0.18), value: model.selected?.id)
@@ -186,6 +187,10 @@ struct EditorView: View {
                     .presentationDetents([.medium, .large])
             }
             .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
+            .sheet(isPresented: $showLayers) {
+                LayersView(model: model)
+                    .presentationDetents([.medium, .large])
+            }
             .sheet(isPresented: $showStickers) {
                 StickerSheet(onPick: { model.addImage($0, sticker: true) }, onMake: { model.startPicking(.sticker) })
                     .presentationDetents([.medium, .large])
@@ -255,6 +260,7 @@ struct EditorView: View {
         case "present": model.setPresenting(true)
         case "tape": model.select(.tape)
         case "stickers": showStickers = true
+        case "layers": showLayers = true
         default: break
         }
     }

@@ -171,7 +171,10 @@ enum PageRenderer {
         let fmt = UIGraphicsImageRendererFormat()
         fmt.scale = k
         fmt.opaque = true
-        let drawing = Store.loadDrawing(nb.id, page.id)
+        if nb.isText {
+            return UIGraphicsImageRenderer(size: page.size, format: fmt).image { r in TextDoc.drawFirstPage(nb, size: page.size, in: r.cgContext) }
+        }
+        let drawing = Store.loadInk(nb.id, page)
         let items = Store.loadItems(nb.id, page.id)
         return UIGraphicsImageRenderer(size: page.size, format: fmt).image { r in
             drawBackground(nb, page, in: r.cgContext)
@@ -230,6 +233,7 @@ enum PageRenderer {
     /// Exports the notebook (or some of its pages) as a PDF. PDF pages and text stay vector; ink is
     /// embedded as a sharp image.
     static func exportPDF(_ nb: Notebook, pages: [PageInfo]? = nil) throws -> URL {
+        if nb.isText { return try TextDoc.exportPDF(nb) }
         let list = pages ?? nb.pages
         let safe = nb.title.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(safe.isEmpty ? "Quaderno Appunti" : safe).pdf")
@@ -245,7 +249,7 @@ enum PageRenderer {
                     ctx.beginPage(withBounds: CGRect(origin: .zero, size: page.size), pageInfo: [:])
                     drawBackground(nb, page, in: ctx.cgContext)
                     drawItems(nb, Store.loadItems(nb.id, page.id))
-                    let d = Store.loadDrawing(nb.id, page.id)
+                    let d = Store.loadInk(nb.id, page)
                     if !d.strokes.isEmpty {
                         inkImage(d, size: page.size, scale: 3).draw(in: CGRect(origin: .zero, size: page.size), blendMode: .multiply, alpha: 1)
                     }
