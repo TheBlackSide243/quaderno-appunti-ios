@@ -109,7 +109,7 @@ final class EditorModel {
     /// Presentation: only the page, fitted to the screen, with the laser at hand.
     var presenting = false
     @ObservationIgnored private var toolBeforePresenting: Tool = .pen
-    var snapShapes: Bool
+    var snapShapes = true
 
     enum Picking: Equatable {
         case cardFront

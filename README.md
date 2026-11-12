@@ -67,6 +67,13 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 - **Da GoodNotes**: un file `.goodnotes` (aperto con "Condividi" o dall'app File, oppure con
   + → Importa da GoodNotes) diventa un quaderno con pagine, carta, scrittura, evidenziatore,
   forme, foto e riquadri di testo.
+- **Studio**: **nastro adesivo** da mettere su date, definizioni o risposte e da scoprire con un
+  tocco; **flashcard** fatte con un riquadro sulla domanda e uno sulla risposta, da ripassare con
+  la ripetizione dilazionata (Di nuovo, Difficile, Bene, Facile); **presentazione** con la sola
+  pagina a tutto schermo e il puntatore laser.
+- **Forme perfette**: una linea, un rettangolo, un triangolo o un cerchio disegnati a mano diventano
+  puliti tenendo ferma la penna un attimo alla fine. **Testo dalla scrittura**: un riquadro su una
+  parte scritta a mano la trasforma in testo, da correggere, copiare o mettere al posto della scrittura.
 - **Testo e foto** sulla pagina: riquadri di testo (dimensione, grassetto, colore) e immagini,
   da trascinare e ridimensionare; **Incolla** mette sulla pagina il testo o l'immagine copiati.
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in
