@@ -51,13 +51,43 @@ final class ItemsLayer: UIView {
         items.last { $0.frame.contains(p) }
     }
 
-    func add(_ item: PageItem, edit: Bool) {
+    func add(_ item: PageItem, edit: Bool, select sel: Bool = true) {
         items.append(item)
         addView(item)
-        select(item.id)
+        if sel { select(item.id) }
         if edit { views[item.id]?.beginEditing() }
         onChange?()
     }
+
+    // MARK: Tape
+
+    /// The topmost tape under a point.
+    func tape(at p: CGPoint) -> PageItem? {
+        items.last { $0.kind == .tape && $0.frame.contains(p) }
+    }
+
+    func setCovered(_ id: UUID, _ on: Bool) {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        items[i].covered = on ? nil : false
+        views[id]?.apply(items[i], animated: true)
+        if id == selectedID { onSelection?(items[i]) }
+        onChange?()
+    }
+
+    /// Covers every tape of the page again. False if there was nothing to cover.
+    @discardableResult
+    func coverAllTapes() -> Bool {
+        var any = false
+        for i in items.indices where items[i].kind == .tape && !items[i].isCovered {
+            items[i].covered = nil
+            views[items[i].id]?.apply(items[i], animated: true)
+            any = true
+        }
+        if any { onChange?() }
+        return any
+    }
+
+    var hasTape: Bool { items.contains { $0.kind == .tape } }
 
     private func tapped(_ id: UUID) {
         if selectedID == id {
@@ -121,6 +151,8 @@ final class ItemView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     private let notebook: Notebook
     private var textView: UITextView?
     private var imageView: UIImageView?
+    private var tapeView: UIView?
+    private let tapeEdge = CAShapeLayer()
     private let border = CAShapeLayer()
     private let handle = UIView()
     private var startFrame = CGRect.zero
@@ -164,6 +196,20 @@ final class ItemView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
             if let name = item.image { iv.image = UIImage(contentsOfFile: Store.image(notebook.id, name).path) }
             addSubview(iv)
             imageView = iv
+        case .tape:
+            let tv = UIView()
+            tv.isUserInteractionEnabled = false
+            tv.layer.cornerRadius = 2
+            tv.layer.shadowColor = UIColor.black.cgColor
+            tv.layer.shadowOpacity = 0.18
+            tv.layer.shadowRadius = 1.5
+            tv.layer.shadowOffset = CGSize(width: 0, height: 1)
+            addSubview(tv)
+            tapeView = tv
+            tapeEdge.fillColor = nil
+            tapeEdge.lineWidth = 1
+            tapeEdge.lineDashPattern = [4, 3]
+            layer.addSublayer(tapeEdge)
         }
 
         border.fillColor = nil
@@ -197,8 +243,20 @@ final class ItemView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func apply(_ item: PageItem) {
+    func apply(_ item: PageItem, animated: Bool = false) {
         self.item = item
+        if let tv = tapeView {
+            let color = UIColor(hex: item.color)
+            tv.backgroundColor = UIColor(patternImage: Self.tapePattern(color))
+            tapeEdge.strokeColor = color.withAlphaComponent(0.9).cgColor
+            let covered = item.isCovered
+            let change = {
+                tv.alpha = covered ? 1 : 0.16
+                tv.layer.shadowOpacity = covered ? 0.18 : 0
+            }
+            if animated { UIView.animate(withDuration: 0.22, animations: change) } else { change() }
+            tapeEdge.isHidden = covered
+        }
         if let tv = textView {
             tv.font = UIFont.systemFont(ofSize: item.fontSize, weight: item.bold ? .bold : .regular)
             tv.textColor = UIColor(hex: item.color)
@@ -213,6 +271,9 @@ final class ItemView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         super.layoutSubviews()
         textView?.frame = bounds
         imageView?.frame = bounds
+        tapeView?.frame = bounds
+        tapeEdge.frame = bounds
+        tapeEdge.path = UIBezierPath(roundedRect: bounds, cornerRadius: 2).cgPath
         border.frame = bounds
         border.path = UIBezierPath(rect: bounds.insetBy(dx: -2, dy: -2)).cgPath
         handle.frame = CGRect(x: bounds.maxX - 20, y: bounds.maxY - 20, width: 20, height: 20)
@@ -248,6 +309,29 @@ final class ItemView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     }
 
     @objc private func tapped() { onTap?(item.id) }
+
+    /// Paper tape: the colour with light diagonal stripes, like washi tape.
+    private static var patterns: [String: UIImage] = [:]
+
+    static func tapePattern(_ color: UIColor) -> UIImage {
+        let key = color.hexString
+        if let p = patterns[key] { return p }
+        let side: CGFloat = 12
+        let img = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { r in
+            color.setFill()
+            r.fill(CGRect(x: 0, y: 0, width: side, height: side))
+            let c = r.cgContext
+            c.setStrokeColor(UIColor.white.withAlphaComponent(0.22).cgColor)
+            c.setLineWidth(3)
+            for k in [-side, 0, side] {
+                c.move(to: CGPoint(x: k, y: side))
+                c.addLine(to: CGPoint(x: k + side, y: 0))
+            }
+            c.strokePath()
+        }
+        patterns[key] = img
+        return img
+    }
 
     /// The box's own drag must not start on the resize handle.
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
@@ -295,9 +379,11 @@ final class ItemView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         case .changed:
             let t = g.translation(in: sv)
             var f = startFrame
-            f.size.width = max(40, startFrame.width + t.x)
+            f.size.width = max(item.kind == .tape ? 16 : 40, startFrame.width + t.x)
             if item.kind == .image {
                 f.size.height = f.width * startFrame.height / max(1, startFrame.width)
+            } else if item.kind == .tape {
+                f.size.height = max(12, startFrame.height + t.y)
             }
             item.frame = f
             fitText()

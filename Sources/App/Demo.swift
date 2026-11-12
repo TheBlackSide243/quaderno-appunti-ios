@@ -23,7 +23,8 @@ enum Demo {
             if let nb = library.notebooks.first(where: { $0.title == title }) { router.open = OpenRequest(notebookID: nb.id, page: page) }
         }
         switch s {
-        case "editor", "pages": open("Fisica 1")
+        case "editor", "pages", "present": open("Fisica 1")
+        case "tape", "study": open("Storia moderna")
         case "pdf", "ocr": open("Dispensa termodinamica")
         case "shapes": open("Fisica 1", page: 1)
         case "trash":
@@ -111,6 +112,41 @@ enum Demo {
         }
         analisi.modified = Date().addingTimeInterval(-26 * hour)
         library.save(analisi, touch: false)
+
+        // History: dates under study tape, and flashcards made from the page.
+        var storia = library.create(title: "Storia moderna", cover: 6, style: .waves, template: .lined, paper: .ivory, format: .a4Portrait, folder: uni)
+        do {
+            let p = storia.pages[0]
+            var d: [PKStroke] = []
+            let ink = UIColor(hex: "1C1C20")
+            var items = [text("La Rivoluzione francese", x: 74, y: 40, w: 460, size: 26, color: "1D4ED8", bold: true)]
+            let events = [("1789", "presa della Bastiglia (14 luglio)"), ("1791", "prima Costituzione, monarchia costituzionale"),
+                          ("1792", "nasce la Repubblica"), ("1793", "il Terrore di Robespierre"), ("1799", "colpo di Stato di Napoleone")]
+            var tapes: [PageItem] = []
+            var cards: [Flashcard] = []
+            for (i, e) in events.enumerated() {
+                let y = 106 + CGFloat(i) * 72
+                items.append(text(e.0, x: 74, y: y, w: 70, size: 20, color: "DC2626", bold: true))
+                items.append(text(e.1, x: 150, y: y + 2, w: 390, size: 17, color: "1C1C20"))
+                d += writeLine(x0: 150, x1: 470 - CGFloat(i % 3) * 50, baseline: y + 58, size: 6.5, color: ink, rng: &rng)
+                var tape = PageItem(kind: .tape, x: 70, y: Double(y) + 2, w: 72, h: 30)
+                tape.color = TapeColors.all[i % 3]
+                if i == 1 { tape.covered = false }
+                tapes.append(tape)
+                cards.append(Flashcard(page: p.id, front: CGRect(x: 146, y: y - 2, width: 400, height: 34), back: CGRect(x: 68, y: y - 2, width: 80, height: 34),
+                                       created: Date().addingTimeInterval(TimeInterval(i))))
+            }
+            d += writeLine(x0: 78, x1: 520, baseline: 520, size: 7, color: ink, rng: &rng)
+            d += writeLine(x0: 78, x1: 380, baseline: 544, size: 7, color: ink, rng: &rng)
+            Store.saveDrawing(PKDrawing(strokes: d), storia.id, p.id)
+            Store.saveItems(items + tapes, storia.id, p.id)
+            cards[4].due = Date().addingTimeInterval(3 * 86400)
+            cards[4].reps = 2
+            cards[4].interval = 3
+            storia.cards = cards
+        }
+        storia.modified = Date().addingTimeInterval(-2 * hour)
+        library.save(storia, touch: false)
 
         var chimica = library.create(title: "Chimica", cover: 2, style: .leaves, template: .grid, paper: .white, format: .a4Portrait, folder: uni)
         chimica.modified = Date().addingTimeInterval(-80 * hour)

@@ -5,7 +5,7 @@ import UIKit
 
 /// The tools of the editor toolbar.
 enum Tool: String, CaseIterable, Codable, Identifiable {
-    case pen, pencil, highlighter, eraser, shape, lasso, hand, laser
+    case pen, pencil, highlighter, eraser, shape, lasso, tape, hand, laser
     var id: String { rawValue }
 
     var label: String {
@@ -16,6 +16,7 @@ enum Tool: String, CaseIterable, Codable, Identifiable {
         case .eraser: String(localized: "Gomma")
         case .shape: String(localized: "Forme")
         case .lasso: String(localized: "Lazo")
+        case .tape: String(localized: "Nastro adesivo")
         case .hand: String(localized: "Sposta testi e foto")
         case .laser: String(localized: "Puntatore laser")
         }
@@ -29,6 +30,7 @@ enum Tool: String, CaseIterable, Codable, Identifiable {
         case .eraser: "eraser"
         case .shape: "square.on.circle"
         case .lasso: "lasso"
+        case .tape: "bandage"
         case .hand: "hand.point.up.left"
         case .laser: "cursorarrow.rays"
         }
@@ -42,7 +44,7 @@ enum Tool: String, CaseIterable, Codable, Identifiable {
         case .highlighter: [12, 20, 30]
         case .eraser: [0, 10, 30]
         case .shape: [1.5, 3, 5]
-        case .lasso, .hand, .laser: []
+        case .lasso, .tape, .hand, .laser: []
         }
     }
 
@@ -52,6 +54,7 @@ enum Tool: String, CaseIterable, Codable, Identifiable {
         case .pen, .shape: ["1C1C20", "1D4ED8", "DC2626"]
         case .pencil: ["3F3F46", "1D4ED8", "B91C1C"]
         case .highlighter: ["FDE047", "86EFAC", "F9A8D4"]
+        case .tape: Array(TapeColors.all.prefix(3))
         default: []
         }
     }
@@ -99,6 +102,37 @@ final class EditorModel {
     var pageVersion: [UUID: Int] = [:]
     /// A short message shown over the page (link to a deleted page, nothing recorded there…).
     var notice: String?
+    /// An area of the page being chosen by dragging (for a flashcard or to read handwriting).
+    var picking: Picking?
+    /// Handwriting read from an area, to copy or turn into typed text.
+    var inkText: InkText?
+    /// Presentation: only the page, fitted to the screen, with the laser at hand.
+    var presenting = false
+    @ObservationIgnored private var toolBeforePresenting: Tool = .pen
+    var snapShapes: Bool
+
+    enum Picking: Equatable {
+        case cardFront
+        case cardBack(CGRect)
+        case inkText
+
+        var prompt: String {
+            switch self {
+            case .cardFront: String(localized: "Trascina un riquadro sulla domanda")
+            case .cardBack: String(localized: "Ora trascina un riquadro sulla risposta")
+            case .inkText: String(localized: "Trascina un riquadro sulla scrittura da leggere")
+            }
+        }
+    }
+
+    struct InkText: Identifiable {
+        let id = UUID()
+        let area: CGRect
+        /// nil while it is being read.
+        var text: String?
+        /// Lines of handwriting found, to size the typed text.
+        var lines = 1
+    }
 
     @ObservationIgnored let canvas = PageCanvasView()
     let audio: AudioNotes
@@ -114,6 +148,9 @@ final class EditorModel {
             fingerDraws = UIDevice.current.userInterfaceIdiom == .phone || !UIPencilInteraction.prefersPencilOnlyDrawing
         }
         canvas.fingerDraws = fingerDraws
+        snapShapes = UserDefaults.standard.object(forKey: "snapShapes") as? Bool ?? true
+        canvas.snapShapes = snapShapes
+        canvas.onPick = { [weak self] r in self?.picked(r) }
         canvas.onSaved = { [weak self] pg in self?.pageSaved(pg) }
         canvas.onSelection = { [weak self] item in self?.selected = item }
         canvas.onUndoChange = { [weak self] in
@@ -135,10 +172,17 @@ final class EditorModel {
         applyTool()
     }
 
+    func setSnapShapes(_ on: Bool) {
+        snapShapes = on
+        canvas.snapShapes = on
+        UserDefaults.standard.set(on, forKey: "snapShapes")
+    }
+
     var page: PageInfo { notebook.pages[pageIndex] }
 
     func showPage() {
         guard notebook.pages.indices.contains(pageIndex) else { return }
+        if picking != nil { endPicking() }
         canvas.load(notebook, page)
         canvas.pullLabels = (pageIndex > 0 ? String(localized: "Pagina precedente") : nil,
                              pageIndex + 1 < notebook.pages.count ? String(localized: "Pagina successiva") : String(localized: "Nuova pagina"))
@@ -221,6 +265,7 @@ final class EditorModel {
         canvas.laser = t == .laser
         if audio.listening { audio.listening = false }
         if t == .hand {
+            canvas.pick = nil
             setDrawMode(false)
             return
         }
@@ -228,13 +273,124 @@ final class EditorModel {
         let w = t.widths.isEmpty ? 0 : t.widths[widthIndex(of: t)]
         let c = UIColor(hex: color(of: t))
         canvas.shape = t == .shape ? PageCanvasView.ShapeStyle(kind: shapeKind, color: c, width: w) : nil
+        syncPick()
         switch t {
         case .pen: canvas.setTool(PKInkingTool(.pen, color: c, width: w))
         case .pencil: canvas.setTool(PKInkingTool(.pencil, color: c, width: w))
         case .highlighter: canvas.setTool(PKInkingTool(.marker, color: c, width: w))
         case .eraser: canvas.setTool(w == 0 ? PKEraserTool(.vector) : PKEraserTool(.bitmap, width: w))
         case .lasso: canvas.setTool(PKLassoTool())
-        case .shape, .hand, .laser: break
+        case .shape, .tape, .hand, .laser: break
+        }
+    }
+
+    /// What dragging a rectangle does now: choosing an area, laying tape, or nothing.
+    private func syncPick() {
+        if picking != nil {
+            canvas.pick = .area
+        } else if tool == .tape {
+            canvas.pick = .tape(color(of: .tape))
+        } else {
+            canvas.pick = nil
+        }
+    }
+
+    // MARK: Choosing an area
+
+    func startPicking(_ p: Picking) {
+        if !drawMode { setDrawMode(true) }
+        picking = p
+        canvas.mark(nil)
+        syncPick()
+    }
+
+    func endPicking() {
+        picking = nil
+        canvas.mark(nil)
+        syncPick()
+    }
+
+    private func picked(_ r: CGRect) {
+        switch picking {
+        case .cardFront:
+            picking = .cardBack(r)
+            canvas.mark(r)
+        case .cardBack(let front):
+            endPicking()
+            var list = notebook.cards ?? []
+            list.append(Flashcard(page: page.id, front: front, back: r))
+            notebook.cards = list
+            canvas.saveNow()
+            library.save(notebook)
+            notice = String(localized: "Flashcard creata: \(list.count) in questo quaderno.")
+        case .inkText:
+            endPicking()
+            readInk(in: r)
+        case nil:
+            break
+        }
+    }
+
+    // MARK: Flashcards
+
+    var cards: [Flashcard] { notebook.cards ?? [] }
+    var dueCards: Int { cards.filter { $0.isDue() }.count }
+
+    func updateCard(_ c: Flashcard) {
+        guard let i = notebook.cards?.firstIndex(where: { $0.id == c.id }) else { return }
+        notebook.cards?[i] = c
+        library.save(notebook, touch: false)
+    }
+
+    func deleteCard(_ c: Flashcard) {
+        notebook.cards?.removeAll { $0.id == c.id }
+        if notebook.cards?.isEmpty == true { notebook.cards = nil }
+        library.save(notebook, touch: false)
+    }
+
+    // MARK: Handwriting to text
+
+    private func readInk(in r: CGRect) {
+        let strokes = canvas.strokes(in: r)
+        guard !strokes.isEmpty else {
+            notice = String(localized: "In quel riquadro non c'è scrittura a mano.")
+            return
+        }
+        inkText = InkText(area: r)
+        let d = PKDrawing(strokes: strokes)
+        Task {
+            let (text, lines) = await Indexer.shared.read(d)
+            guard inkText?.area == r else { return }
+            inkText?.text = text
+            inkText?.lines = max(1, lines)
+        }
+    }
+
+    /// Puts the text read in a box over the handwriting; with `replace` the handwriting goes.
+    func placeInkText(_ text: String, replace: Bool) {
+        guard let it = inkText else { return }
+        inkText = nil
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        let size = min(40, max(12, (Double(it.area.height) / Double(max(1, it.lines))) * 0.62))
+        if replace { canvas.removeStrokes(in: it.area) }
+        canvas.addTextBox(t, in: replace ? it.area : it.area.offsetBy(dx: 0, dy: it.area.height + 8), fontSize: size.rounded())
+    }
+
+    // MARK: Presentation
+
+    func setPresenting(_ on: Bool) {
+        guard on != presenting else { return }
+        if picking != nil { endPicking() }
+        if on {
+            toolBeforePresenting = tool
+            presenting = true
+            canvas.fitWhole = true
+            select(.laser)
+        } else {
+            presenting = false
+            canvas.fitWhole = false
+            select(toolBeforePresenting == .hand ? .pen : toolBeforePresenting)
         }
     }
 
@@ -311,6 +467,8 @@ final class EditorModel {
         canvas.saveNow()
         let pg = notebook.pages.remove(at: index)
         Store.removePageFiles(notebook.id, pg.id)
+        notebook.cards?.removeAll { $0.page == pg.id }
+        if notebook.cards?.isEmpty == true { notebook.cards = nil }
         library.save(notebook)
         Indexer.shared.prune(notebook)
         if index == 0 { library.refreshThumb(notebook.id) }

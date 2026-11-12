@@ -150,6 +150,7 @@ struct ShelfView: View {
     @State private var tagName = ""
     @State private var renamingTag: String?
     @State private var confirmDeleteTag: String?
+    @State private var studying: Notebook?
 
     private var sort: SortOrder { SortOrder(rawValue: sortRaw) ?? .date }
     private var regular: Bool { hSize == .regular }
@@ -229,6 +230,9 @@ struct ShelfView: View {
                 .pageSized()
         }
         .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
+        .sheet(item: $studying) { nb in
+            StudyView(notebook: nb, onUpdate: { library.updateCard(nb.id, $0) }, onDelete: { library.deleteCard(nb.id, $0) })
+        }
         .fileImporter(isPresented: $showImport, allowedContentTypes: importTypes, allowsMultipleSelection: true) { result in
             guard case let .success(urls) = result else { return }
             let goodNotes = urls.filter { $0.pathExtension.lowercased() == "goodnotes" }
@@ -538,6 +542,12 @@ struct ShelfView: View {
             Label(nb.favorite ? String(localized: "Togli dai preferiti") : String(localized: "Aggiungi ai preferiti"), systemImage: nb.favorite ? "star.slash" : "star")
         }
         Button { newName = nb.title; renaming = nb } label: { Label("Rinomina", systemImage: "pencil") }
+        if let cards = nb.cards, !cards.isEmpty {
+            let due = cards.filter { $0.isDue() }.count
+            Button { studying = nb } label: {
+                Label(due > 0 ? String(localized: "Ripassa flashcard (\(due))") : String(localized: "Ripassa flashcard"), systemImage: "rectangle.on.rectangle.angled")
+            }
+        }
         Menu {
             Button { library.setCover(nb.id, nil) } label: { Label("Prima pagina", systemImage: "doc") }
             Menu("Stile") {

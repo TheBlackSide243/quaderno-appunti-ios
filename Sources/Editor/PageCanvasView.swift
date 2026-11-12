@@ -75,6 +75,46 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     }
     private let listenTap = UITapGestureRecognizer()
 
+    /// Dragging a rectangle: a strip of study tape of that colour, or an area of the page for the
+    /// caller (flashcards, reading the handwriting).
+    enum Pick: Equatable {
+        case tape(String)
+        case area
+    }
+
+    var pick: Pick? {
+        didSet {
+            if pick != oldValue { pickLayer.path = nil }
+            applyMode()
+        }
+    }
+    /// Called with the area dragged in `.area` mode, in page points.
+    var onPick: ((CGRect) -> Void)?
+    private let pickPan = UIPanGestureRecognizer()
+    private let pickLayer = CAShapeLayer()
+    /// An area already chosen (the question of a flashcard), shown while choosing the next one.
+    private let markLayer = CAShapeLayer()
+    private var pickStart = CGPoint.zero
+    private let tapeTap = UITapGestureRecognizer()
+
+    /// Draw a shape by hand and keep the pen still at the end: it becomes a clean shape.
+    var snapShapes = true
+    private var inkPoints: [CGPoint] = []
+    private var holdAnchor = CGPoint.zero
+    private var holdWork: DispatchWorkItem?
+    private var snapOutline: [CGPoint]?
+    private var pendingSnap: [CGPoint]?
+
+    /// While presenting: the whole page fits the screen.
+    var fitWhole = false {
+        didSet {
+            guard fitWhole != oldValue else { return }
+            fittedWidth = 0
+            setNeedsLayout()
+        }
+    }
+    private var fittedHeight: CGFloat = 0
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = UIColor(Theme.desk)
@@ -109,7 +149,9 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         canvas.addSubview(links)
         canvas.blocksDrawing = { [weak self] p in
             guard let self else { return false }
-            return self.links.button(at: self.canvas.convert(p, to: self.links)) != nil
+            if self.links.button(at: self.canvas.convert(p, to: self.links)) != nil { return true }
+            // a covered tape takes the touch, to be uncovered
+            return self.items.tape(at: self.canvas.convert(p, to: self.items))?.isCovered == true
         }
 
         for l in [laserGlow, laserCore] {
@@ -147,6 +189,23 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         shapePan.delegate = self
         shapePan.isEnabled = false
         canvas.addGestureRecognizer(shapePan)
+
+        for l in [pickLayer, markLayer] {
+            l.lineJoin = .round
+            l.zPosition = 12
+            items.layer.addSublayer(l)
+        }
+        pickPan.addTarget(self, action: #selector(pickDragged))
+        pickPan.maximumNumberOfTouches = 1
+        pickPan.delegate = self
+        pickPan.isEnabled = false
+        canvas.addGestureRecognizer(pickPan)
+
+        tapeTap.addTarget(self, action: #selector(tapeTapped))
+        tapeTap.delegate = self
+        canvas.addGestureRecognizer(tapeTap)
+
+        canvas.drawingGestureRecognizer.addTarget(self, action: #selector(inkGesture))
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(tappedEmpty))
         tap.cancelsTouchesInView = false
@@ -204,6 +263,10 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         links.bounds = CGRect(origin: .zero, size: pg.size)
         links.update(items.items, zoom: canvas.zoomScale)
         shapeLayer.path = nil
+        pickLayer.path = nil
+        markLayer.path = nil
+        snapOutline = nil
+        pendingSnap = nil
         laserPoints = []
         laserCore.path = nil
         laserGlow.path = nil
@@ -267,12 +330,14 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         // While the iPhone Duo folds or a window resizes the view can be momentarily very narrow:
         // a zoom of zero or less would put NaN in the layer positions and end the app.
         guard let pg = page, bounds.width > 40, bounds.height > 40, pg.size.width > 0, pg.size.height > 0 else { return }
-        let margin: CGFloat = bounds.width > 600 ? 28 : 10
-        let fit = (bounds.width - margin * 2) / pg.size.width
+        let margin: CGFloat = fitWhole ? 8 : (bounds.width > 600 ? 28 : 10)
+        var fit = (bounds.width - margin * 2) / pg.size.width
+        if fitWhole { fit = min(fit, (bounds.height - margin * 2) / pg.size.height) }
         guard fit.isFinite, fit > 0 else { return }
-        let refit = fittedWidth != bounds.width
+        let refit = fittedWidth != bounds.width || (fitWhole && fittedHeight != bounds.height)
         if refit {
             fittedWidth = bounds.width
+            fittedHeight = bounds.height
             canvas.minimumZoomScale = fit * 0.6
             canvas.maximumZoomScale = fit * 6
             canvas.zoomScale = fit
@@ -378,9 +443,12 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     // MARK: Modes
 
     private func applyMode() {
-        canvas.drawingGestureRecognizer.isEnabled = drawMode && shape == nil && !laser && !listenMode
-        shapePan.isEnabled = drawMode && shape != nil && !laser && !listenMode
-        laserPan.isEnabled = drawMode && laser && !listenMode
+        let free = drawMode && !listenMode && pick == nil
+        canvas.drawingGestureRecognizer.isEnabled = free && shape == nil && !laser
+        shapePan.isEnabled = free && shape != nil && !laser
+        laserPan.isEnabled = free && laser
+        pickPan.isEnabled = drawMode && !listenMode && pick != nil
+        tapeTap.isEnabled = drawMode && !listenMode
         listenTap.isEnabled = listenMode
         updateShapeTouches()
         items.isUserInteractionEnabled = !drawMode
@@ -427,17 +495,34 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         var types = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
         if fingerDraws { types.append(NSNumber(value: UITouch.TouchType.direct.rawValue)) }
         shapePan.allowedTouchTypes = types
+        // choosing an area works with any finger; tape is drawn like ink
+        if case .tape = pick {
+            pickPan.allowedTouchTypes = types
+        } else {
+            pickPan.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue), NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        }
     }
 
     /// The page must not scroll while a shape is being drawn or the laser is moving.
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
-        (g === shapePan || g === laserPan) && other === canvas.panGestureRecognizer
+        (g === shapePan || g === laserPan || g === pickPan) && other === canvas.panGestureRecognizer
+    }
+
+    /// A tap on tape works together with the other gestures of the page.
+    func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        g === tapeTap
     }
 
     /// Shapes and the laser do not start on a link button.
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
-        if g === shapePan || g === laserPan {
+        if g === shapePan || g === laserPan || g === pickPan {
             return links.button(at: g.location(in: links)) == nil
+        }
+        if g === tapeTap {
+            guard let t = items.tape(at: g.location(in: items)) else { return false }
+            // with the tape tool any tape opens and closes; otherwise only covered tape opens
+            if case .tape = pick { return true }
+            return t.isCovered
         }
         return super.gestureRecognizerShouldBegin(g)
     }
@@ -576,6 +661,11 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         guard !loading else { return }
         scheduleSave()
         onUndoChange?()
+        if let outline = pendingSnap {
+            pendingSnap = nil
+            // not inside PencilKit's own change: replace the stroke right after
+            DispatchQueue.main.async { [weak self] in self?.snapLastStroke(to: outline) }
+        }
     }
 
     func undo() { canvas.undoManager?.undo(); onUndoChange?() }
@@ -585,6 +675,199 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
 
     func clearInk() {
         setDrawingUndoable(PKDrawing())
+    }
+
+    // MARK: Tape and areas
+
+    @objc private func pickDragged(_ g: UIPanGestureRecognizer) {
+        guard let mode = pick else { return }
+        let p = clamped(g.location(in: items))
+        switch g.state {
+        case .began, .changed:
+            if g.state == .began {
+                let t = g.translation(in: items)
+                pickStart = clamped(CGPoint(x: p.x - t.x, y: p.y - t.y))
+            }
+            let r = pickRect(mode, from: pickStart, to: p)
+            let z = max(0.05, canvas.zoomScale)
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            switch mode {
+            case .tape(let hex):
+                pickLayer.fillColor = UIColor(hex: hex).withAlphaComponent(0.85).cgColor
+                pickLayer.strokeColor = nil
+                pickLayer.lineDashPattern = nil
+            case .area:
+                pickLayer.fillColor = UIColor(Theme.accent).withAlphaComponent(0.12).cgColor
+                pickLayer.strokeColor = UIColor(Theme.accent).cgColor
+                pickLayer.lineWidth = 2 / z
+                pickLayer.lineDashPattern = [NSNumber(value: Double(6 / z)), NSNumber(value: Double(4 / z))]
+            }
+            pickLayer.path = UIBezierPath(roundedRect: r, cornerRadius: 2).cgPath
+            CATransaction.commit()
+        case .ended:
+            pickLayer.path = nil
+            let r = pickRect(mode, from: pickStart, to: p)
+            guard r.width > 8, r.height > 8 else { return }
+            switch mode {
+            case .tape(let hex): addTape(r, color: hex)
+            case .area: onPick?(r)
+            }
+        default:
+            pickLayer.path = nil
+        }
+    }
+
+    /// The rectangle dragged; tape dragged along a line becomes a strip one line high.
+    private func pickRect(_ mode: Pick, from a: CGPoint, to b: CGPoint) -> CGRect {
+        var r = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
+        if case .tape = mode, r.height < 20 {
+            let mid = (a.y + b.y) / 2
+            r = CGRect(x: r.minX, y: mid - 11, width: max(r.width, 1), height: 22)
+        }
+        return r
+    }
+
+    func addTape(_ r: CGRect, color: String) {
+        var item = PageItem(kind: .tape, x: r.minX, y: r.minY, w: r.width, h: r.height)
+        item.color = color
+        items.add(item, edit: false, select: false)
+    }
+
+    @objc private func tapeTapped(_ g: UITapGestureRecognizer) {
+        guard let t = items.tape(at: g.location(in: items)) else { return }
+        items.setCovered(t.id, !t.isCovered)
+    }
+
+    /// Covers all the tape on the page again; false if none was uncovered.
+    @discardableResult
+    func coverAllTapes() -> Bool { items.coverAllTapes() }
+
+    var hasTape: Bool { items.hasTape }
+
+    /// Outlines an area already chosen; nil removes it.
+    func mark(_ r: CGRect?) {
+        guard let r else { markLayer.path = nil; return }
+        let z = max(0.05, canvas.zoomScale)
+        markLayer.fillColor = UIColor(Theme.accent).withAlphaComponent(0.18).cgColor
+        markLayer.strokeColor = UIColor(Theme.accent).cgColor
+        markLayer.lineWidth = 2 / z
+        markLayer.path = UIBezierPath(roundedRect: r, cornerRadius: 2).cgPath
+    }
+
+    /// The strokes mostly inside an area.
+    func strokes(in r: CGRect) -> [PKStroke] {
+        canvas.drawing.strokes.filter { Self.mostlyInside($0, r) }
+    }
+
+    private static func mostlyInside(_ s: PKStroke, _ r: CGRect) -> Bool {
+        let b = s.renderBounds
+        let i = b.intersection(r)
+        guard !i.isNull else { return false }
+        return i.width * i.height >= 0.5 * max(1, b.width * b.height) || r.contains(CGPoint(x: b.midX, y: b.midY))
+    }
+
+    /// Removes the strokes mostly inside an area (undoable).
+    func removeStrokes(in r: CGRect) {
+        var d = canvas.drawing
+        let before = d.strokes.count
+        d.strokes.removeAll { Self.mostlyInside($0, r) }
+        guard d.strokes.count != before else { return }
+        setDrawingUndoable(d)
+    }
+
+    /// A text box over an area, for typed text that replaces handwriting.
+    func addTextBox(_ text: String, in r: CGRect, fontSize: Double) {
+        var item = PageItem(kind: .text, x: r.minX, y: r.minY, w: max(60, r.width), h: max(30, r.height))
+        item.text = text
+        item.fontSize = fontSize
+        items.add(item, edit: false, select: false)
+    }
+
+    // MARK: Shapes drawn by hand
+
+    @objc private func inkGesture(_ g: UIGestureRecognizer) {
+        guard snapShapes, let tool = canvas.tool as? PKInkingTool else { return }
+        let p = g.location(in: items)
+        let screen = g.location(in: self)
+        switch g.state {
+        case .began:
+            inkPoints = [p]
+            snapOutline = nil
+            pendingSnap = nil
+            holdAnchor = screen
+            armHold(tool)
+        case .changed:
+            inkPoints.append(p)
+            if hypot(screen.x - holdAnchor.x, screen.y - holdAnchor.y) > 5 {
+                holdAnchor = screen
+                if snapOutline != nil {
+                    snapOutline = nil
+                    shapeLayer.path = nil
+                }
+                armHold(tool)
+            }
+        case .ended:
+            holdWork?.cancel()
+            if let o = snapOutline {
+                pendingSnap = o
+                // if PencilKit does not hand the stroke over, do not leave the preview behind
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                    guard let self, self.pendingSnap == o else { return }
+                    self.pendingSnap = nil
+                    self.shapeLayer.path = nil
+                }
+            }
+            snapOutline = nil
+        default:
+            holdWork?.cancel()
+            snapOutline = nil
+            shapeLayer.path = nil
+        }
+    }
+
+    private func armHold(_ tool: PKInkingTool) {
+        holdWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.holdFired(tool) }
+        }
+        holdWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    private func holdFired(_ tool: PKInkingTool) {
+        let g = canvas.drawingGestureRecognizer
+        guard g.state == .began || g.state == .changed, let r = ShapeRecognizer.recognize(inkPoints) else { return }
+        // the highlighter only straightens lines
+        if tool.inkType == .marker, r.kind != .line { return }
+        snapOutline = r.points
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let light = tool.color.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+        shapeLayer.strokeColor = light.withAlphaComponent(tool.inkType == .marker ? 0.5 : 0.85).cgColor
+        shapeLayer.lineWidth = max(1.5, tool.width * (tool.inkType == .marker ? 1 : 0.8))
+        let path = CGMutablePath()
+        path.addLines(between: r.points)
+        shapeLayer.path = path
+        CATransaction.commit()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    /// Replaces the stroke just drawn with the clean shape, in the same ink.
+    private func snapLastStroke(to outline: [CGPoint]) {
+        shapeLayer.path = nil
+        var d = canvas.drawing
+        guard let last = d.strokes.last, abs(last.path.creationDate.timeIntervalSinceNow) < 10 else { return }
+        let pts = Array(last.path)
+        guard !pts.isEmpty else { return }
+        let median = pts.map { $0.size.width }.sorted()[pts.count / 2]
+        let opacity = pts.map(\.opacity).sorted()[pts.count / 2]
+        let type = last.ink.inkType
+        // the pen thins strokes made in code, so the shape uses the even ink at the same width
+        let ink = type == .pen ? PKInk(.monoline, color: last.ink.color) : last.ink
+        let s = type == .pen ? median * 0.565 + 1.85 : median
+        d.strokes[d.strokes.count - 1] = Shapes.stroke(points: outline, ink: ink, size: s, opacity: opacity)
+        setDrawingUndoable(d)
     }
 
     // MARK: Boxes

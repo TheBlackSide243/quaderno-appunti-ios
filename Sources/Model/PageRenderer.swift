@@ -149,6 +149,9 @@ enum PageRenderer {
                 if let name = item.image, let img = UIImage(contentsOfFile: Store.image(nb.id, name).path) {
                     img.draw(in: item.frame)
                 }
+            case .tape:
+                // study tape is a way of looking at the page, not part of it: exports show what is under it
+                break
             }
         }
     }

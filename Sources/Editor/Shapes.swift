@@ -53,6 +53,16 @@ enum Shapes {
         return out
     }
 
+    /// A polyline as ink, with the same point size all along.
+    static func stroke(points: [CGPoint], ink: PKInk, size s: CGFloat, opacity: CGFloat = 1) -> PKStroke {
+        let pts = densify(points)
+        let size = CGSize(width: s, height: s)
+        let control = pts.enumerated().map { i, p in
+            PKStrokePoint(location: p, timeOffset: TimeInterval(i) * 0.01, size: size, opacity: opacity, force: 1, azimuth: 0, altitude: .pi / 3)
+        }
+        return PKStroke(ink: ink, path: PKStrokePath(controlPoints: control, creationDate: Date()))
+    }
+
     /// The shape as ink: an even line of the given colour and width.
     static func stroke(_ kind: ShapeKind, from a: CGPoint, to b: CGPoint, color: UIColor, width: CGFloat) -> PKStroke {
         let pts = densify(outline(kind, from: a, to: b, width: width))

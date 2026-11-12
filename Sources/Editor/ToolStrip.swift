@@ -19,6 +19,18 @@ struct ToolStrip: View {
                 toolButton("waveform", label: String(localized: "Registrazione audio"), on: model.audio.panel || model.audio.recording) {
                     model.audio.panel.toggle()
                 }
+                if model.tool == .lasso {
+                    separator
+                    toolButton("text.viewfinder", label: String(localized: "Testo dalla scrittura"), on: model.picking == .inkText) {
+                        if model.picking == .inkText { model.endPicking() } else { model.startPicking(.inkText) }
+                    }
+                }
+                if model.tool == .tape {
+                    separator
+                    toolButton("rectangle.on.rectangle", label: String(localized: "Copri di nuovo tutti i nastri"), on: false) {
+                        if !model.canvas.coverAllTapes() { model.notice = String(localized: "Su questa pagina non ci sono nastri scoperti.") }
+                    }
+                }
                 if model.tool == .shape {
                     separator
                     ForEach(ShapeKind.allCases) { k in

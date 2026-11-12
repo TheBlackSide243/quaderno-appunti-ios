@@ -220,6 +220,8 @@ struct Notebook: Codable, Identifiable, Hashable {
     var tags: [String]?
     /// Sound recorded while writing in this notebook.
     var recordings: [Recording]?
+    /// Flashcards made from parts of the pages.
+    var cards: [Flashcard]?
 
     var tagList: [String] { tags ?? [] }
 }
@@ -236,6 +238,60 @@ struct Recording: Codable, Identifiable, Hashable {
     var end: Date { start.addingTimeInterval(duration) }
 }
 
+/// A flashcard: a part of a page as the question and another as the answer, reviewed with spaced
+/// repetition (each answer moves the next review further away, or back to the start).
+struct Flashcard: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var page: UUID
+    var front: CGRect
+    var back: CGRect
+    var created = Date()
+    var due = Date()
+    /// Days until the next review after the last good answer.
+    var interval: Double = 0
+    var ease: Double = 2.5
+    var reps = 0
+    var lapses = 0
+
+    enum Grade: Int, CaseIterable, Identifiable {
+        case again, hard, good, easy
+        var id: Int { rawValue }
+    }
+
+    /// The card after an answer given at `now`.
+    func answered(_ g: Grade, now: Date = Date()) -> Flashcard {
+        var c = self
+        switch g {
+        case .again:
+            c.reps = 0
+            c.lapses += 1
+            c.interval = 0
+            c.ease = max(1.3, ease - 0.2)
+            c.due = now.addingTimeInterval(60)
+            return c
+        case .hard:
+            c.interval = max(1, interval * 1.2)
+            c.ease = max(1.3, ease - 0.15)
+        case .good:
+            c.interval = reps == 0 ? 1 : (reps == 1 ? 3 : max(interval + 1, interval * ease))
+        case .easy:
+            c.interval = reps == 0 ? 4 : max(interval + 1, interval * ease * 1.3)
+            c.ease = ease + 0.15
+        }
+        c.reps += 1
+        c.due = now.addingTimeInterval(c.interval * 86400)
+        return c
+    }
+
+    /// When the card would come back after answering `g` now, for the buttons.
+    func nextInterval(_ g: Grade) -> TimeInterval {
+        let now = Date()
+        return answered(g, now: now).due.timeIntervalSince(now)
+    }
+
+    func isDue(_ now: Date = Date()) -> Bool { due <= now }
+}
+
 struct Folder: Codable, Identifiable, Hashable {
     var id = UUID()
     var name: String
@@ -243,7 +299,8 @@ struct Folder: Codable, Identifiable, Hashable {
 
 /// A text box or a picture placed on a page, in page points.
 struct PageItem: Codable, Identifiable, Hashable {
-    enum Kind: String, Codable { case text, image }
+    /// `tape` covers part of the page, to study: a tap shows what is under it.
+    enum Kind: String, Codable { case text, image, tape }
 
     var id = UUID()
     var kind: Kind
@@ -258,6 +315,10 @@ struct PageItem: Codable, Identifiable, Hashable {
     var image: String?
     /// The page this box leads to when its link button is tapped.
     var link: UUID?
+    /// For tape: false once uncovered (nil = covered).
+    var covered: Bool?
+
+    var isCovered: Bool { covered ?? true }
 
     var frame: CGRect {
         get { CGRect(x: x, y: y, width: w, height: h) }
@@ -268,6 +329,11 @@ struct PageItem: Codable, Identifiable, Hashable {
 /// Colours offered for text boxes.
 enum TextColors {
     static let all = ["1C1C20", "1D4ED8", "DC2626", "15803D", "7C3AED", "EA580C"]
+}
+
+/// Colours of the study tape.
+enum TapeColors {
+    static let all = ["F59E0B", "38BDF8", "F472B6", "A3E635", "94A3B8"]
 }
 
 extension UIColor {

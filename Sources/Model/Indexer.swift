@@ -143,6 +143,16 @@ final class Indexer: @unchecked Sendable {
         (try? Data(contentsOf: Store.index(nb))).flatMap { try? Store.decoder.decode([String: PageText].self, from: $0) } ?? [:]
     }
 
+    /// Reads some handwriting now: the text and how many lines it has.
+    func read(_ d: PKDrawing) async -> (String, Int) {
+        await withCheckedContinuation { cont in
+            queue.async {
+                let text = autoreleasepool { self.recognize(d, size: CGSize(width: 1e5, height: 1e5)) }
+                cont.resume(returning: (text, text.split(whereSeparator: \.isNewline).count))
+            }
+        }
+    }
+
     /// Handwriting recognition of the ink alone, drawn black on white.
     private func recognize(_ d: PKDrawing, size: CGSize) -> String {
         guard !d.strokes.isEmpty else { return "" }

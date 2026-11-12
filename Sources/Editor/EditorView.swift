@@ -28,6 +28,7 @@ struct EditorView: View {
     @State private var renaming = false
     @State private var newTitle = ""
     @State private var transcribing: Recording?
+    @State private var studying = false
 
     init(library: Library, notebook: Notebook, page: Int?) {
         _model = State(initialValue: EditorModel(library: library, notebook: notebook, page: page))
@@ -62,7 +63,9 @@ struct EditorView: View {
                             .padding(.horizontal, 12)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    if let item = model.selected, !model.drawMode {
+                    if model.presenting {
+                        PresentBar(model: model)
+                    } else if let item = model.selected, !model.drawMode {
                         ItemBar(item: item, model: model)
                             .padding(.horizontal, 12)
                             .padding(.bottom, 2)
@@ -74,6 +77,19 @@ struct EditorView: View {
                 .padding(.bottom, 10)
                 VStack(spacing: 8) {
                     ErrorBanner(error: $error)
+                    if let p = model.picking {
+                        HStack(spacing: 10) {
+                            Image(systemName: "rectangle.dashed").foregroundStyle(Theme.bg)
+                            Text(p.prompt).font(.footnote.weight(.semibold)).foregroundStyle(Theme.bg)
+                            Button { model.endPicking() } label: {
+                                Text("Annulla").font(.footnote.weight(.bold)).foregroundStyle(Theme.accent)
+                                    .padding(.horizontal, 10).padding(.vertical, 4)
+                                    .background(Theme.bg, in: Capsule())
+                            }
+                        }
+                        .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 6)
+                        .background(Theme.accent, in: Capsule())
+                    }
                     if model.audio.listening {
                         Label("Tocca una parola scritta per sentire cosa si diceva", systemImage: "hand.tap")
                             .font(.footnote.weight(.semibold)).foregroundStyle(Theme.bg)
@@ -94,16 +110,23 @@ struct EditorView: View {
                 .padding(12).frame(maxHeight: .infinity, alignment: .top)
             }
             .safeAreaInset(edge: .top, spacing: 0) {
-                ToolStrip(model: model, onPhoto: { showPhotos = true })
+                if !model.presenting {
+                    ToolStrip(model: model, onPhoto: { showPhotos = true })
+                }
             }
             .animation(.easeOut(duration: 0.18), value: model.selected?.id)
             .animation(.easeOut(duration: 0.18), value: model.audio.panel)
             .animation(.easeOut(duration: 0.18), value: model.notice)
+            .animation(.easeOut(duration: 0.18), value: model.picking)
+            .animation(.easeOut(duration: 0.25), value: model.presenting)
             .background(Theme.desk)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbar }
             .toolbarBackground(Theme.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar(model.presenting ? .hidden : .visible, for: .navigationBar)
+            .statusBarHidden(model.presenting)
+            .persistentSystemOverlays(model.presenting ? .hidden : .automatic)
         }
     }
 
@@ -129,6 +152,14 @@ struct EditorView: View {
                     .presentationDetents([.medium, .large])
             }
             .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
+            .sheet(isPresented: $studying) {
+                StudyView(notebook: model.notebook, onUpdate: { model.updateCard($0) }, onDelete: { model.deleteCard($0) },
+                          onOpen: { c in if let i = model.notebook.pages.firstIndex(where: { $0.id == c.page }) { model.go(to: i) } })
+            }
+            .sheet(isPresented: Binding(get: { model.inkText != nil }, set: { if !$0 { model.inkText = nil } })) {
+                InkTextView(model: model)
+                    .presentationDetents([.medium, .large])
+            }
             .fullScreenCover(isPresented: $showScanner) {
                 ScannerView { images in
                     showScanner = false
@@ -180,6 +211,11 @@ struct EditorView: View {
         case "pages": showPages = true
         case "ocr": showText = true
         case "shapes": Demo.drawShapes(model)
+        case "study":
+            model.canvas.saveNow()
+            studying = true
+        case "present": model.setPresenting(true)
+        case "tape": model.select(.tape)
         default: break
         }
     }
@@ -267,6 +303,26 @@ struct EditorView: View {
             Toggle(isOn: Binding(get: { model.fingerDraws }, set: { model.setFingerDraws($0) })) {
                 Label("Scrivi anche col dito", systemImage: "hand.draw")
             }
+            Toggle(isOn: Binding(get: { model.snapShapes }, set: { model.setSnapShapes($0) })) {
+                Label("Forme perfette tenendo fermo", systemImage: "square.on.circle")
+            }
+        }
+        Section("Studio") {
+            Button { model.startPicking(.cardFront) } label: { Label("Crea flashcard", systemImage: "rectangle.on.rectangle.angled") }
+            if !model.cards.isEmpty {
+                Button {
+                    model.canvas.saveNow()
+                    studying = true
+                } label: {
+                    Label(model.dueCards > 0 ? String(localized: "Ripassa flashcard (\(model.dueCards))") : String(localized: "Ripassa flashcard"), systemImage: "brain.head.profile")
+                }
+            }
+            Button { model.select(.tape) } label: { Label("Nastro adesivo", systemImage: "bandage") }
+            Button {
+                if !model.canvas.coverAllTapes() { model.notice = String(localized: "Su questa pagina non ci sono nastri scoperti.") }
+            } label: { Label("Copri di nuovo tutti i nastri", systemImage: "rectangle.on.rectangle") }
+            Button { model.startPicking(.inkText) } label: { Label("Testo dalla scrittura", systemImage: "text.viewfinder") }
+            Button { model.setPresenting(true) } label: { Label("Presentazione", systemImage: "play.rectangle") }
         }
         Section("Aggiungi") {
             if !regular {

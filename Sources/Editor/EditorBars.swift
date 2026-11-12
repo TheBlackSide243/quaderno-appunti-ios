@@ -22,6 +22,19 @@ struct ItemBar: View {
                             .overlay(Circle().stroke(item.color == hex ? Theme.accent : Theme.line, lineWidth: item.color == hex ? 2.5 : 1))
                     }
                 }
+            } else if item.kind == .tape {
+                Button { model.update { $0.covered = $0.isCovered ? false : nil } } label: {
+                    Label(item.isCovered ? String(localized: "Scopri") : String(localized: "Copri"), systemImage: item.isCovered ? "eye" : "eye.slash")
+                        .font(.footnote.weight(.semibold))
+                }
+                Divider().frame(height: 22)
+                ForEach(TapeColors.all, id: \.self) { hex in
+                    Button { model.update { $0.color = hex } } label: {
+                        RoundedRectangle(cornerRadius: 3).fill(Color(uiColor: UIColor(hex: hex)))
+                            .frame(width: 22, height: 14)
+                            .overlay(RoundedRectangle(cornerRadius: 3).stroke(item.color == hex ? Theme.accent : Theme.line, lineWidth: item.color == hex ? 2.5 : 1).padding(-2))
+                    }
+                }
             } else {
                 Image(systemName: "photo").foregroundStyle(Theme.sub)
                 Text("Trascina per spostare, pizzica o usa l'angolo per ridimensionare")

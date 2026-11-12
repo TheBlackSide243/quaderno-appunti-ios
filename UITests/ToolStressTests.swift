@@ -3,7 +3,7 @@ import XCTest
 /// Does what crashed the app on a tester's iPhone Duo: changing tool many times and using the
 /// lasso on a page with ink. A crash ends the test, and the workflow keeps the crash report.
 final class ToolStressTests: XCTestCase {
-    private let tools = ["Penna", "Matita", "Evidenziatore", "Gomma", "Forme", "Lazo", "Sposta testi e foto", "Puntatore laser"]
+    private let tools = ["Penna", "Matita", "Evidenziatore", "Gomma", "Forme", "Lazo", "Nastro adesivo", "Sposta testi e foto", "Puntatore laser"]
 
     override func setUp() {
         continueAfterFailure = false

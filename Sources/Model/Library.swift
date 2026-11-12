@@ -405,6 +405,19 @@ final class Library {
         save(nb, touch: false)
     }
 
+    func updateCard(_ id: UUID, _ c: Flashcard) {
+        guard var nb = notebook(id), let i = nb.cards?.firstIndex(where: { $0.id == c.id }) else { return }
+        nb.cards?[i] = c
+        save(nb, touch: false)
+    }
+
+    func deleteCard(_ id: UUID, _ c: Flashcard) {
+        guard var nb = notebook(id) else { return }
+        nb.cards?.removeAll { $0.id == c.id }
+        if nb.cards?.isEmpty == true { nb.cards = nil }
+        save(nb, touch: false)
+    }
+
     func toggleFavorite(_ id: UUID) {
         guard var nb = notebook(id) else { return }
         nb.favorite.toggle()
