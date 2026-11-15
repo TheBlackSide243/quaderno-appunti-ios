@@ -31,7 +31,7 @@ struct SelectionBar: View {
             .padding(.horizontal, 10)
         }
         .frame(height: 50)
-        .background(.ultraThinMaterial, in: Capsule())
+        .background(Theme.panel.opacity(0.97), in: Capsule())
         .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
         .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
         .frame(maxWidth: 560)
