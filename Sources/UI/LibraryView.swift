@@ -95,6 +95,20 @@ struct LibraryView: View {
                 .preferredColorScheme(.dark)
         }
         .onOpenURL { url in
+            if url.scheme == "quadernoappunti" {
+                // a tap on a widget
+                switch url.host {
+                case "new": handle(.new(nil))
+                case "last": handle(.last)
+                case "review": handle(.review(nil))
+                case "search":
+                    router.open = nil
+                    router.showSettings = false
+                    router.showSearch = true
+                default: break
+                }
+                return
+            }
             switch url.pathExtension.lowercased() {
             case "pdf":
                 if let nb = library.importPDF(url, folder: nil) { router.open = OpenRequest(notebookID: nb.id) }

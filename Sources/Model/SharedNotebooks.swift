@@ -7,9 +7,9 @@ import UIKit
 /// it every few seconds while it is open, and when the shelf comes back on screen.
 ///
 /// Unlike the backup sync, both sides may change the same notebook at once: the list of pages is
-/// merged (pages added on either side stay, pages deleted on either side go), and each page file
-/// follows its newest copy. Two people writing on the same page at the same moment: the last save
-/// wins for that page.
+/// merged (pages added on either side stay, pages deleted on either side go), and the ink and the
+/// boxes of a page changed on both sides are put together stroke by stroke (`StrokeMerge`). Other
+/// files follow their newest copy.
 @MainActor
 @Observable
 final class SharedNotebooks {
@@ -66,6 +66,7 @@ final class SharedNotebooks {
     }
 
     func stopSharing(_ id: UUID) {
+        StrokeMerge.removeAll(id)
         links[id.uuidString] = nil
         lastSync[id] = nil
         persist()
@@ -186,6 +187,39 @@ final class SharedNotebooks {
         if let e = coordError ?? failure { throw e }
     }
 
+    /// A file of the shared folder, downloaded first if iCloud has not done it yet.
+    private nonisolated static func data(_ url: URL) -> Data? {
+        var value: Data?
+        var coordError: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordError) { real in
+            value = try? Data(contentsOf: real)
+        }
+        return value
+    }
+
+    private nonisolated static func setModified(_ url: URL, _ d: Date) {
+        try? FileManager.default.setAttributes([.modificationDate: d], ofItemAtPath: url.path)
+    }
+
+    /// A page file changed on both sides: the two put together, written on both sides with the
+    /// same date. False when they could not be put together (then the newest copy wins).
+    private nonisolated static func mergeBoth(_ id: UUID, _ rel: String, _ h: URL, _ t: URL, changed: inout Bool) throws -> Bool {
+        guard let mine = try? Data(contentsOf: h), let theirs = data(t),
+              let out = StrokeMerge.mergeFile(rel, base: StrokeMerge.base(id, rel), mine: mine, theirs: theirs) else { return false }
+        let now = Date()
+        if out != mine {
+            try out.write(to: h, options: .atomic)
+            changed = true
+        }
+        if out != theirs {
+            try copy(h, t)
+        }
+        setModified(h, now)
+        setModified(t, now)
+        StrokeMerge.setBase(id, rel, out)
+        return true
+    }
+
     private nonisolated static func read(_ url: URL) -> Notebook? {
         var value: Notebook?
         var coordError: NSError?
@@ -259,18 +293,40 @@ final class SharedNotebooks {
                 for rel in hereFiles.union(thereFiles) where rel != "notebook.json" {
                     let h = here.appendingPathComponent(rel), t = there.appendingPathComponent(rel)
                     let inHere = hereFiles.contains(rel), inThere = thereFiles.contains(rel)
-                    if inHere && !inThere {
+                    let mergeable = StrokeMerge.canMerge(rel)
+                    let base = mergeable ? StrokeMerge.base(id, rel) : nil
+                    if inHere && !inThere, let base, (try? Data(contentsOf: h)) == base {
+                        // they took it away (all the boxes of a page, say) and nothing changed here
+                        try? fm.removeItem(at: h)
+                        StrokeMerge.setBase(id, rel, nil)
+                        changed = true
+                    } else if inThere && !inHere, let base, data(t) == base {
+                        try? fm.removeItem(at: t)
+                        StrokeMerge.setBase(id, rel, nil)
+                    } else if inHere && !inThere {
                         try copy(h, t)
+                        if mergeable { StrokeMerge.setBase(id, rel, try? Data(contentsOf: h)) }
                     } else if inThere && !inHere {
                         try pull(t, h)
                         changed = true
+                        if mergeable { StrokeMerge.setBase(id, rel, try? Data(contentsOf: h)) }
                     } else {
-                        let dh = modified(h), dt = fm.fileExists(atPath: t.path) ? modified(t) : .distantPast
+                        let downloaded = fm.fileExists(atPath: t.path)
+                        let dh = modified(h), dt = downloaded ? modified(t) : .distantPast
+                        let differ = !downloaded || abs(dh.timeIntervalSince(dt)) > 1
+                        if mergeable, differ, try mergeBoth(id, rel, h, t, changed: &changed) {
+                            continue
+                        }
                         if dh > dt.addingTimeInterval(1) {
                             try copy(h, t)
+                            if mergeable { StrokeMerge.setBase(id, rel, try? Data(contentsOf: h)) }
                         } else if dt > dh.addingTimeInterval(1) {
                             try pull(t, h)
                             changed = true
+                            if mergeable { StrokeMerge.setBase(id, rel, try? Data(contentsOf: h)) }
+                        } else if mergeable, !fm.fileExists(atPath: StrokeMerge.baseURL(id, rel).path) {
+                            // the same on both sides: that is what both had
+                            StrokeMerge.setBase(id, rel, try? Data(contentsOf: h))
                         }
                     }
                 }
@@ -302,6 +358,7 @@ final class SharedNotebooks {
                         let pages = dir.appendingPathComponent("pages")
                         for name in (try? fm.contentsOfDirectory(atPath: pages.path)) ?? [] where name.hasPrefix(pid.uuidString) {
                             try? fm.removeItem(at: pages.appendingPathComponent(name))
+                            StrokeMerge.setBase(id, "pages/" + name, nil)
                         }
                     }
                 }

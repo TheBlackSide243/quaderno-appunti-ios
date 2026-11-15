@@ -46,6 +46,7 @@ jobs:
           set -eu
           rm -rf Payload && mkdir Payload
           cp -R build/Appunti.xcarchive/Products/Applications/Appunti.app Payload/
+          for x in Payload/Appunti.app/PlugIns/*.appex; do if [ -d "$x" ]; then codesign -f -s - "$x"; fi; done
           codesign -f -s - Payload/Appunti.app
           VER="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Payload/Appunti.app/Info.plist)"
           zip -qry "Quaderno-Appunti-$VER-unsigned.ipa" Payload
