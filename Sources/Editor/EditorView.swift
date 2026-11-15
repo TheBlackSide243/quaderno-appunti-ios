@@ -302,7 +302,9 @@ struct EditorView: View {
         case "layers": showLayers = true
         case "assistant": showAssistant = true
         case "papers": showPaperSheet = true
-        case "palette": model.palette = CGPoint(x: model.canvas.bounds.midX - 120, y: model.canvas.bounds.midY)
+        case "palette":
+            model.select(.pen)
+            model.palette = CGPoint(x: model.canvas.bounds.midX - 120, y: model.canvas.bounds.midY)
         default: break
         }
     }
