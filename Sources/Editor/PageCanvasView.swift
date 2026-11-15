@@ -15,6 +15,10 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     private(set) var layerID: UUID?
     /// When the files of the page were last read or written, to notice changes made by others.
     private var stamps: [Date?] = []
+    /// The ink and the boxes as they were last read or saved: what came from disk since then is
+    /// put together with what was written here and not saved yet.
+    private var inkBase: [PKStroke] = []
+    private var itemsBase: [PageItem] = []
     let items = ItemsLayer()
     /// The link buttons of the boxes, above everything and usable with any tool.
     private let links = LinkLayer()
@@ -285,6 +289,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
                 loading = true
                 canvas.drawing = Store.loadDrawing(nb.id, lid)
                 loading = false
+                inkBase = canvas.drawing.strokes
                 canvas.undoManager?.removeAllActions()
                 renderLayers(force: true)
                 onUndoChange?()
@@ -319,6 +324,8 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         layerScale = 0
         items.bounds = CGRect(origin: .zero, size: pg.size)
         items.load(nb, Store.loadItems(nb.id, pg.id))
+        inkBase = canvas.drawing.strokes
+        itemsBase = items.items
         links.bounds = CGRect(origin: .zero, size: pg.size)
         links.update(items.items, zoom: canvas.zoomScale)
         clearSelection()
@@ -366,16 +373,41 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
             applyPaperStyle()
             renderPaper()
         }
-        guard !dirty else { return }
         let now = currentStamps()
         guard now != stamps else {
+            if !dirty { renderLayers(force: true) }
+            return
+        }
+        let disk = Store.loadDrawing(nb.id, lid)
+        let diskItems = Store.loadItems(nb.id, pg.id)
+        if dirty {
+            // written here and not saved yet: both together, and saved soon
+            let ink = StrokeMerge.merge(base: inkBase, mine: canvas.drawing.strokes, theirs: disk.strokes)
+            let list = StrokeMerge.mergeItems(base: itemsBase, mine: items.items, theirs: diskItems)
+            inkBase = disk.strokes
+            itemsBase = diskItems
+            stamps = now
+            if ink.map(StrokeMerge.key) != canvas.drawing.strokes.map(StrokeMerge.key) {
+                loading = true
+                canvas.drawing = PKDrawing(strokes: ink)
+                loading = false
+                canvas.undoManager?.removeAllActions()
+                onUndoChange?()
+            }
+            if list != items.items {
+                items.load(nb, list)
+                links.update(items.items, zoom: canvas.zoomScale)
+            }
             renderLayers(force: true)
+            scheduleSave()
             return
         }
         loading = true
-        canvas.drawing = Store.loadDrawing(nb.id, lid)
+        canvas.drawing = disk
         loading = false
-        items.load(nb, Store.loadItems(nb.id, pg.id))
+        inkBase = disk.strokes
+        itemsBase = diskItems
+        items.load(nb, diskItems)
         links.update(items.items, zoom: canvas.zoomScale)
         renderLayers(force: true)
         stamps = now
@@ -884,6 +916,8 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         PageHistory.snapshotIfDue(nb, pg)
         Store.saveDrawing(canvas.drawing, nb.id, layerID ?? pg.id)
         Store.saveItems(items.items, nb.id, pg.id)
+        inkBase = canvas.drawing.strokes
+        itemsBase = items.items
         stamps = currentStamps()
         onSaved?(pg)
     }

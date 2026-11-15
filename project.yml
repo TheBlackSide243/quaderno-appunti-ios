@@ -7,12 +7,14 @@ options:
   developmentLanguage: it
 settings:
   base:
-    MARKETING_VERSION: "1.2.0"
-    CURRENT_PROJECT_VERSION: "18"
+    MARKETING_VERSION: "1.3.0"
+    CURRENT_PROJECT_VERSION: "19"
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
+    # the app's bundle id; the widgets' is the same with .widgets (TestFlight sets its own)
+    APP_ID: com.local.appunti
 targets:
   Appunti:
     type: application
@@ -20,9 +22,11 @@ targets:
     sources:
       - path: Sources
       - path: Resources
+    dependencies:
+      - target: AppuntiWidgets
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.local.appunti
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_ID)
         PRODUCT_NAME: Appunti
         INFOPLIST_FILE: Support/Info.plist
         GENERATE_INFOPLIST_FILE: NO
@@ -32,6 +36,19 @@ targets:
       testTargets:
         - AppuntiTests
         - AppuntiUITests
+  AppuntiWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_ID).widgets
+        PRODUCT_NAME: AppuntiWidgets
+        INFOPLIST_FILE: Widgets/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"
   AppuntiTests:
     type: bundle.unit-test
     platform: iOS
