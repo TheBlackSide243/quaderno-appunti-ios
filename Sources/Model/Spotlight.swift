@@ -77,6 +77,11 @@ final class Spotlight: @unchecked Sendable {
         let pages = nb.pages.count == 1 ? String(localized: "1 pagina") : String(localized: "\(nb.pages.count) pagine")
         book.contentDescription = ([pages] + nb.tagList).joined(separator: " · ")
         book.keywords = nb.tagList
+        // a notebook locked with Face ID shows only its title: no pages, no picture, nothing heard
+        guard !nb.isLocked else {
+            book.contentModificationDate = nb.modified
+            return [CSSearchableItem(uniqueIdentifier: "nb:\(nb.id.uuidString)", domainIdentifier: domain, attributeSet: book)]
+        }
         let heard = (nb.recordings ?? []).compactMap(\.transcript).joined(separator: "\n")
         if !heard.isEmpty { book.textContent = heard }
         book.contentModificationDate = nb.modified

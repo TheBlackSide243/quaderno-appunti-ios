@@ -43,6 +43,26 @@ struct ToolStrip: View {
                         toolButton(k.icon, label: k.label, on: model.shapeKind == k) { model.setShape(k) }
                     }
                 }
+                if let current = model.style(of: model.tool) {
+                    separator
+                    Menu {
+                        ForEach(PenStyle.options(for: model.tool)) { s in
+                            Button { model.setStyle(s) } label: {
+                                if s == current { Label(s.label, systemImage: "checkmark") } else { Label(s.label, systemImage: s.icon) }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: current.icon).font(.system(size: 17, weight: .medium))
+                            Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+                        }
+                        .foregroundStyle(Theme.text)
+                        .frame(width: 48, height: 36)
+                        .background(Theme.input, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Theme.line, lineWidth: 1))
+                    }
+                    .accessibilityLabel(String(localized: "Tipo di inchiostro: \(current.label)"))
+                }
                 if !model.tool.widths.isEmpty {
                     separator
                     // The tool and its widths are read once here and passed down: SwiftUI can update

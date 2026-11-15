@@ -13,6 +13,8 @@ final class Router {
     var showNew = false
     var showIntro = false
     var showTrash = false
+    /// The flashcards of a notebook, opened by a shortcut.
+    var study: Notebook?
 }
 
 /// The notebook shelf: the root, and one level of folders pushed on top.
@@ -23,6 +25,7 @@ struct LibraryView: View {
     @AppStorage("intro.seen") private var introSeen = false
     @State private var router = Router()
     @State private var importing = false
+    @State private var inbox = IntentInbox.shared
 
     var body: some View {
         NavigationStack {
@@ -41,14 +44,16 @@ struct LibraryView: View {
         .environment(router)
         .fullScreenCover(item: $router.open) { req in
             if let nb = library.notebook(req.notebookID) {
-                if nb.isText {
-                    TextDocView(library: library, notebook: nb)
-                        .environment(library)
-                        .environment(backup)
-                } else {
-                    EditorView(library: library, notebook: nb, page: req.page)
-                        .environment(library)
-                        .environment(backup)
+                LockedNotebookGate(notebook: nb, onClose: { router.open = nil }) {
+                    if nb.isText {
+                        TextDocView(library: library, notebook: nb)
+                            .environment(library)
+                            .environment(backup)
+                    } else {
+                        EditorView(library: library, notebook: nb, page: req.page)
+                            .environment(library)
+                            .environment(backup)
+                    }
                 }
             }
         }
@@ -76,6 +81,10 @@ struct LibraryView: View {
                 .environment(library)
                 .pageSized()
         }
+        .sheet(item: $router.study) { nb in
+            StudyView(notebook: nb, onUpdate: { library.updateCard(nb.id, $0) }, onDelete: { library.deleteCard(nb.id, $0) })
+        }
+        .onChange(of: inbox.pending) { _, a in handle(a) }
         .sheet(isPresented: $router.showTrash) {
             NavigationStack { TrashView() }
                 .environment(library)
@@ -124,7 +133,51 @@ struct LibraryView: View {
             Indexer.shared.catchUp(library.notebooks)
             Spotlight.shared.reindexAll(library.notebooks)
             await Demo.route(library: library, router: router)
+            AppuntiShortcuts.updateAppShortcutParameters()
+            handle(inbox.pending)
             await SharedNotebooks.shared.syncAll(library)
+        }
+    }
+
+    /// Opens a notebook, closing the one open first if there is one.
+    private func show(_ req: OpenRequest) {
+        router.showSearch = false
+        router.showSettings = false
+        if router.open != nil {
+            router.open = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { router.open = req }
+        } else {
+            router.open = req
+        }
+    }
+
+    /// Does what a shortcut (Siri, the Shortcuts app, the Action button) asked.
+    private func handle(_ action: IntentAction?) {
+        guard let action else { return }
+        inbox.pending = nil
+        switch action {
+        case .open(let id):
+            if library.notebook(id) != nil { show(OpenRequest(notebookID: id)) } else { library.error = String(localized: "Quel quaderno non c'è più.") }
+        case .last:
+            if let nb = library.notebooks.first { show(OpenRequest(notebookID: nb.id)) }
+        case .new(let title):
+            let nb = library.create(title: title ?? "", cover: Int.random(in: 0..<Covers.colors.count), style: .plain,
+                                    template: .lined, paper: .white, format: .a4Portrait, folder: nil)
+            show(OpenRequest(notebookID: nb.id))
+        case .review(let id):
+            let candidates = id.flatMap { library.notebook($0) }.map { [$0] }
+                ?? library.notebooks.filter { !($0.cards ?? []).isEmpty }
+                    .sorted { ($0.cards ?? []).filter { $0.isDue() }.count > ($1.cards ?? []).filter { $0.isDue() }.count }
+            guard let nb = candidates.first, !(nb.cards ?? []).isEmpty else {
+                library.error = String(localized: "Non hai ancora flashcard: creale da un quaderno, in … → Studio → Crea flashcard.")
+                return
+            }
+            router.open = nil
+            Task {
+                guard await AppLock.shared.unlock(nb) else { return }
+                try? await Task.sleep(for: .milliseconds(400))
+                router.study = nb
+            }
         }
     }
 }
@@ -554,6 +607,20 @@ struct ShelfView: View {
         }
     }
 
+    /// Locking needs a passcode on the device; unlocking asks for Face ID first.
+    private func toggleLock(_ nb: Notebook) async {
+        if nb.isLocked {
+            guard await AppLock.shared.authenticate(String(localized: "Togli il blocco a «\(nb.title)»")) else { return }
+            library.setLocked(nb.id, false)
+        } else {
+            guard AppLock.available else {
+                library.error = String(localized: "Per bloccare un quaderno imposta un codice sul dispositivo (Impostazioni → Face ID e codice).")
+                return
+            }
+            library.setLocked(nb.id, true)
+        }
+    }
+
     @ViewBuilder
     private func folderMenu(_ f: Folder) -> some View {
         Button { renamingFolder = f; folderName = f.name; askFolder = true } label: { Label("Rinomina", systemImage: "pencil") }
@@ -576,6 +643,10 @@ struct ShelfView: View {
             Label(nb.favorite ? String(localized: "Togli dai preferiti") : String(localized: "Aggiungi ai preferiti"), systemImage: nb.favorite ? "star.slash" : "star")
         }
         Button { newName = nb.title; renaming = nb } label: { Label("Rinomina", systemImage: "pencil") }
+        Button { Task { await toggleLock(nb) } } label: {
+            Label(nb.isLocked ? String(localized: "Togli il blocco") : String(localized: "Blocca con \(AppLock.methodName)"),
+                  systemImage: nb.isLocked ? "lock.open" : "lock")
+        }
         if SharedNotebooks.shared.isShared(nb.id) {
             Menu {
                 Button { Task { await SharedNotebooks.shared.sync(nb.id, library: library) } } label: { Label("Sincronizza adesso", systemImage: "arrow.triangle.2.circlepath") }
@@ -586,7 +657,7 @@ struct ShelfView: View {
         }
         if let cards = nb.cards, !cards.isEmpty {
             let due = cards.filter { $0.isDue() }.count
-            Button { studying = nb } label: {
+            Button { Task { if await AppLock.shared.unlock(nb) { studying = nb } } } label: {
                 Label(due > 0 ? String(localized: "Ripassa flashcard (\(due))") : String(localized: "Ripassa flashcard"), systemImage: "rectangle.on.rectangle.angled")
             }
         }
@@ -627,7 +698,11 @@ struct ShelfView: View {
         } label: { Label("Etichette", systemImage: "tag") }
         Button { library.duplicate(nb.id) } label: { Label("Duplica", systemImage: "plus.square.on.square") }
         Button {
-            do { share = ShareFile(url: try PageRenderer.exportPDF(nb)) } catch { library.error = String(localized: "Esportazione non riuscita: \(error.localizedDescription)") }
+            Task {
+                // a locked notebook is exported only after Face ID
+                guard await AppLock.shared.unlock(nb) else { return }
+                do { share = ShareFile(url: try PageRenderer.exportPDF(nb)) } catch { library.error = String(localized: "Esportazione non riuscita: \(error.localizedDescription)") }
+            }
         } label: { Label("Esporta PDF", systemImage: "square.and.arrow.up") }
         Divider()
         Button(role: .destructive) { confirmDelete = nb } label: { Label("Elimina", systemImage: "trash") }

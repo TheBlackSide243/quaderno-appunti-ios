@@ -106,9 +106,10 @@ enum SortOrder: String, CaseIterable, Identifiable {
     }
 }
 
-/// The colour of the paper. Ink keeps its real colour, so the paper is always light.
+/// The colour of the paper. On the light papers ink keeps its real colour; on the dark ones it is
+/// shown the way PencilKit shows it in dark mode (black ink becomes white, colours get lighter).
 enum Paper: String, Codable, CaseIterable, Identifiable {
-    case white, ivory, yellow, gray
+    case white, ivory, yellow, gray, night, navy
     var id: String { rawValue }
 
     var label: String {
@@ -117,6 +118,8 @@ enum Paper: String, Codable, CaseIterable, Identifiable {
         case .ivory: String(localized: "Avorio")
         case .yellow: String(localized: "Gialla")
         case .gray: String(localized: "Grigio chiaro")
+        case .night: String(localized: "Nera")
+        case .navy: String(localized: "Blu notte")
         }
     }
 
@@ -126,7 +129,21 @@ enum Paper: String, Codable, CaseIterable, Identifiable {
         case .ivory: UIColor(red: 0.992, green: 0.973, blue: 0.918, alpha: 1)
         case .yellow: UIColor(red: 0.973, green: 0.957, blue: 0.890, alpha: 1)
         case .gray: UIColor(red: 0.925, green: 0.929, blue: 0.937, alpha: 1)
+        case .night: UIColor(red: 0.098, green: 0.102, blue: 0.114, alpha: 1)
+        case .navy: UIColor(red: 0.075, green: 0.110, blue: 0.188, alpha: 1)
         }
+    }
+
+    /// Dark papers, to write in the evening: the ink is shown light.
+    var isDark: Bool { self == .night || self == .navy }
+
+    static let light: [Paper] = [.white, .ivory, .yellow, .gray]
+    static let dark: [Paper] = [.night, .navy]
+
+    /// A paper this version does not know (written by a newer one) opens as white paper.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = Paper(rawValue: raw) ?? .white
     }
 }
 
@@ -189,6 +206,8 @@ struct PageInfo: Codable, Identifiable, Hashable {
     var bookmarked: Bool?
     /// Layers of ink, bottom first; nil = one layer, stored in the page's own drawing file.
     var layers: [InkLayer]?
+    /// A picture used as the paper of this page (a custom paper), in the notebook's images.
+    var backdrop: String?
 
     /// The layers, always at least one. The first layer of every page has the page's id, so its ink
     /// is in the same file as before layers existed.
@@ -247,6 +266,10 @@ struct Notebook: Codable, Identifiable, Hashable {
     var isText: Bool { textDocument ?? false }
     /// Pages deleted, so a shared notebook does not get them back from the other people.
     var deletedPages: [UUID]?
+    /// Opens only with Face ID, Touch ID or the device passcode (nil = not locked).
+    var locked: Bool?
+
+    var isLocked: Bool { locked ?? false }
 
     var tagList: [String] { tags ?? [] }
 }

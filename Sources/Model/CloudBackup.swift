@@ -336,6 +336,7 @@ final class CloudBackup {
         var images: Set<String> = []
         for p in nb.pages {
             for item in Store.loadItems(id, p.id) { if let name = item.image { images.insert(name) } }
+            if let b = p.backdrop { images.insert(b) }
         }
         let audio = Set((nb.recordings ?? []).map { "\($0.id.uuidString).m4a" })
         for dir in [here, there] {

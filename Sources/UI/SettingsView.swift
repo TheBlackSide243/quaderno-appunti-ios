@@ -9,6 +9,8 @@ struct SettingsView: View {
     var onIntro: (() -> Void)?
     @State private var picking = false
     @State private var spotlight = Spotlight.enabled
+    @State private var lock = AppLock.shared
+    @State private var lockError: String?
 
     var body: some View {
         @Bindable var backup = backup
@@ -54,6 +56,17 @@ struct SettingsView: View {
                             .buttonStyle(PrimaryButtonStyle())
                         }
                         ErrorBanner(error: $backup.error)
+                    }
+                    Panel("Blocco") {
+                        Toggle(String(localized: "Blocca l'app con \(AppLock.methodName)"), isOn: Binding(
+                            get: { lock.appLockOn },
+                            set: { on in Task { lockError = await lock.setAppLock(on) } }
+                        ))
+                        .tint(Theme.accent)
+                        .font(.subheadline)
+                        Text("L'app chiede \(AppLock.methodName) quando la apri e quando ci torni. Puoi anche bloccare un solo quaderno: nel suo menu nello scaffale scegli «Blocca».")
+                            .font(.caption).foregroundStyle(Theme.sub)
+                        ErrorBanner(error: $lockError)
                     }
                     Panel("Ricerca dell'iPhone") {
                         Toggle("Mostra i quaderni in Spotlight", isOn: $spotlight)

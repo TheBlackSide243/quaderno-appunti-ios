@@ -92,6 +92,14 @@ struct NotebookCover: View {
         Group {
             if let c = notebook.cover {
                 CoverArt(color: Covers.color(c), style: notebook.coverStyle ?? .plain, title: notebook.title)
+            } else if notebook.isLocked {
+                // a locked notebook does not show its first page
+                ZStack {
+                    Color(uiColor: notebook.paper.uiColor)
+                    Image(systemName: "lock.fill").font(.system(size: 30, weight: .semibold))
+                        .foregroundStyle(notebook.paper.isDark ? Color.white.opacity(0.55) : Color.black.opacity(0.35))
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             } else {
                 ZStack {
                     Color(uiColor: notebook.paper.uiColor)
@@ -114,6 +122,13 @@ struct NotebookCover: View {
         }
         .aspectRatio(0.76, contentMode: .fit)
         .shadow(color: .black.opacity(0.5), radius: 5, y: 3)
+        .overlay(alignment: .bottomTrailing) {
+            if notebook.isLocked && notebook.cover != nil {
+                Image(systemName: "lock.fill").font(.caption.weight(.bold)).foregroundStyle(.white)
+                    .padding(6).background(.black.opacity(0.45), in: Circle())
+                    .padding(6)
+            }
+        }
         .overlay(alignment: .topTrailing) {
             if notebook.favorite {
                 Image(systemName: "star.fill").font(.caption).foregroundStyle(Theme.accent)
@@ -122,7 +137,7 @@ struct NotebookCover: View {
             }
         }
         .task(id: version) {
-            guard notebook.cover == nil else { return }
+            guard notebook.cover == nil, !notebook.isLocked else { return }
             let nb = notebook
             // the saved picture, or the first page drawn now if it is not there yet
             thumb = await Task.detached { () -> UIImage? in

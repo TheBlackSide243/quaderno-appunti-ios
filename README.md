@@ -87,6 +87,10 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
   sottolineano e si correggono con un tocco.
 - **Quaderni condivisi** con altre persone attraverso una cartella condivisa di iCloud Drive,
   aggiornati ogni pochi secondi. **Agende** dell'anno con i mesi e le settimane collegati tra loro.
+- **Blocco con Face ID** per tutta l'app o per un solo quaderno; **penne nuove** (stilografica, tratto
+  uniforme, pastello, acquerello); **carta scura** nera o blu notte per scrivere la sera; **carte
+  personalizzate** da una foto o dalle pagine di un PDF; con l'**Apple Pencil Pro** una stretta apre una
+  tavolozza rapida vicino alla punta; **Comandi Rapidi** e Siri per creare, aprire e ripassare.
 - **Testo e foto** sulla pagina: riquadri di testo (dimensione, grassetto, colore) e immagini,
   da trascinare e ridimensionare; **Incolla** mette sulla pagina il testo o l'immagine copiati.
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in

@@ -32,6 +32,7 @@ struct EditorView: View {
     @State private var showStickers = false
     @State private var showLayers = false
     @State private var showAssistant = false
+    @State private var showPaperSheet = false
     /// Set when the editor is the whole window (iPad): closing it closes the window.
     private var onClose: (() -> Void)?
 
@@ -93,6 +94,7 @@ struct EditorView: View {
             ZStack(alignment: .bottom) {
                 CanvasHost(view: model.canvas)
                     .ignoresSafeArea(edges: .bottom)
+                    .overlay { QuickPaletteLayer(model: model) }
                 VStack(spacing: 10) {
                     if model.audio.panel || model.audio.recording {
                         AudioBar(model: model, onShare: { share = ShareFile(url: $0) }, onTranscribe: { transcribing = $0 })
@@ -224,6 +226,10 @@ struct EditorView: View {
                 LayersView(model: model)
                     .presentationDetents([.medium, .large])
             }
+            .sheet(isPresented: $showPaperSheet) {
+                PaperSheet(onPick: { img, all in model.setBackdrop(img, allPages: all) })
+                    .presentationDetents([.medium, .large])
+            }
             .sheet(isPresented: $showStickers) {
                 StickerSheet(onPick: { model.addImage($0, sticker: true) }, onMake: { model.startPicking(.sticker) })
                     .presentationDetents([.medium, .large])
@@ -295,6 +301,8 @@ struct EditorView: View {
         case "stickers": showStickers = true
         case "layers": showLayers = true
         case "assistant": showAssistant = true
+        case "papers": showPaperSheet = true
+        case "palette": model.palette = CGPoint(x: model.canvas.bounds.midX - 120, y: model.canvas.bounds.midY)
         default: break
         }
     }
@@ -445,9 +453,18 @@ struct EditorView: View {
                 }
             } label: { Label("Modello pagina", systemImage: "squareshape.split.2x2") }
             Menu {
-                ForEach(Paper.allCases) { p in
-                    Button { model.setPaper(p) } label: {
-                        if model.notebook.paper == p { Label(p.label, systemImage: "checkmark") } else { Text(p.label) }
+                Section("Chiare") {
+                    ForEach(Paper.light) { p in paperButton(p) }
+                }
+                Section("Scure, per la sera") {
+                    ForEach(Paper.dark) { p in paperButton(p) }
+                }
+                if !model.notebook.isBoard {
+                    Section {
+                        Button { showPaperSheet = true } label: { Label("Carta personalizzata…", systemImage: "photo.on.rectangle") }
+                        if model.page.backdrop != nil {
+                            Button { model.setBackdrop(nil, allPages: false) } label: { Label("Togli la carta personalizzata", systemImage: "xmark.rectangle") }
+                        }
                     }
                 }
             } label: { Label("Carta", systemImage: "paintpalette") }
@@ -465,6 +482,12 @@ struct EditorView: View {
             Button { export { try model.exportPDF(currentOnly: false) } } label: { Label("Quaderno in PDF", systemImage: "square.and.arrow.up") }
             Button { export { try model.exportPDF(currentOnly: true) } } label: { Label("Questa pagina in PDF", systemImage: "doc") }
             Button { export { try model.exportImage() } } label: { Label("Questa pagina come immagine", systemImage: "photo") }
+        }
+    }
+
+    private func paperButton(_ p: Paper) -> some View {
+        Button { model.setPaper(p) } label: {
+            if model.notebook.paper == p { Label(p.label, systemImage: "checkmark") } else { Text(p.label) }
         }
     }
 

@@ -1,0 +1,7 @@
+/* Phrases of the ready-made shortcuts (Siri, Shortcuts, Spotlight). Keys are the Italian phrases. */
+"Nuovo quaderno in ${applicationName}" = "New notebook in ${applicationName}";
+"Crea un quaderno in ${applicationName}" = "Make a notebook in ${applicationName}";
+"Apri l'ultimo quaderno in ${applicationName}" = "Open the last notebook in ${applicationName}";
+"Riprendi a scrivere in ${applicationName}" = "Keep writing in ${applicationName}";
+"Apri ${notebook} in ${applicationName}" = "Open ${notebook} in ${applicationName}";
+"Ripassa le flashcard in ${applicationName}" = "Review flashcards in ${applicationName}";

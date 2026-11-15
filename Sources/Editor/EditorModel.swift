@@ -69,6 +69,8 @@ struct ToolSettings: Codable {
     var widths: [String: Int] = [:]
     /// The shape drawn by the shape tool (optional so settings saved by older versions still load).
     var shape: ShapeKind?
+    /// The kind of ink of the pen and of the pencil, by tool.
+    var styles: [String: String]?
 
     static let key = "toolSettings"
 
@@ -176,6 +178,7 @@ final class EditorModel {
         }
         canvas.onPull = { [weak self] direction in self?.pulled(direction) }
         canvas.onPencilTap = { [weak self] in self?.toggleEraser() }
+        canvas.onSqueeze = { [weak self] s in self?.squeezed(s) }
         canvas.onLink = { [weak self] page in self?.follow(page) }
         canvas.onInkTap = { [weak self] date in self?.playFrom(date) }
         audio.onSaved = { [weak self] rec in self?.recordingSaved(rec) }
@@ -312,6 +315,7 @@ final class EditorModel {
     func widthIndex(of t: Tool) -> Int { min(tools.widths[t.rawValue] ?? 1, max(0, t.widths.count - 1)) }
 
     func select(_ t: Tool) {
+        if t != tools.tool { previousTool = tools.tool }
         if t == .eraser, tools.tool != .eraser, tools.tool != .hand { toolBeforeEraser = tools.tool }
         tools.tool = t
         tools.save()
@@ -321,6 +325,18 @@ final class EditorModel {
     /// Double tap on the Pencil: eraser, and back to the tool used before.
     func toggleEraser() {
         select(tool == .eraser ? toolBeforeEraser : .eraser)
+    }
+
+    /// Where the quick palette of the Apple Pencil Pro is open (nil = closed), in the page view.
+    var palette: CGPoint?
+    @ObservationIgnored private var previousTool: Tool = .pen
+
+    private func squeezed(_ s: PageCanvasView.Squeeze) {
+        switch s {
+        case .eraser: toggleEraser()
+        case .previous: select(previousTool)
+        case .palette(let p): palette = palette == nil ? p : nil
+        }
     }
 
     var shapeKind: ShapeKind { tools.shape ?? .line }
@@ -344,6 +360,23 @@ final class EditorModel {
         applyTool()
     }
 
+    /// The kind of ink of the pen or the pencil (nil for the other tools).
+    func style(of t: Tool) -> PenStyle? {
+        let options = PenStyle.options(for: t)
+        guard !options.isEmpty else { return nil }
+        if let raw = tools.styles?[t.rawValue], let s = PenStyle(rawValue: raw), options.contains(s) { return s }
+        return PenStyle.standard(for: t)
+    }
+
+    func setStyle(_ s: PenStyle) {
+        guard PenStyle.options(for: tool).contains(s) else { return }
+        var all = tools.styles ?? [:]
+        all[tool.rawValue] = s.rawValue
+        tools.styles = all
+        tools.save()
+        applyTool()
+    }
+
     private func applyTool() {
         let t = tool
         canvas.laser = t == .laser
@@ -359,8 +392,9 @@ final class EditorModel {
         canvas.shape = t == .shape ? PageCanvasView.ShapeStyle(kind: shapeKind, color: c, width: w) : nil
         syncPick()
         switch t {
-        case .pen: canvas.setTool(PKInkingTool(.pen, color: c, width: w))
-        case .pencil: canvas.setTool(PKInkingTool(.pencil, color: c, width: w))
+        case .pen, .pencil:
+            let s = style(of: t) ?? .ballpoint
+            canvas.setTool(PKInkingTool(s.inkType, color: c, width: w * s.widthFactor))
         case .highlighter: canvas.setTool(PKInkingTool(.marker, color: c, width: w))
         case .eraser: canvas.setTool(w == 0 ? PKEraserTool(.vector) : PKEraserTool(.bitmap, width: w))
         case .lasso: canvas.setTool(PKLassoTool())
@@ -578,7 +612,10 @@ final class EditorModel {
         let ref = notebook.pages[min(index, notebook.pages.count - 1)]
         let t = template ?? (ref.pdfIndex == nil ? ref.template : .lined)
         let size = ref.pdfIndex == nil ? ref.size : PageFormat.a4Portrait.size
-        notebook.pages.insert(PageInfo(template: t, size: size), at: index + 1)
+        var fresh = PageInfo(template: t, size: size)
+        // a new page keeps the custom paper of the page it follows, unless a ruling was chosen
+        if template == nil { fresh.backdrop = ref.backdrop }
+        notebook.pages.insert(fresh, at: index + 1)
         library.save(notebook)
         pageIndex = index + 1
         showPage()
@@ -655,6 +692,30 @@ final class EditorModel {
         canvas.reloadPaper(notebook, page)
         library.refreshThumb(notebook.id)
         for p in notebook.pages { pageVersion[p.id, default: 0] += 1 }
+    }
+
+    /// A picture as the paper of this page or of every page (nil = back to the ordinary paper).
+    /// The picture is copied into the notebook, so it goes with it when synced or shared.
+    func setBackdrop(_ img: UIImage?, allPages: Bool) {
+        canvas.saveNow()
+        var name: String?
+        if let img {
+            guard let (saved, _) = Store.saveImage(img, notebook.id) else {
+                notice = String(localized: "Non riesco a salvare la carta.")
+                return
+            }
+            name = saved
+        }
+        let targets = allPages ? Array(notebook.pages.indices) : [pageIndex]
+        for i in targets where notebook.pages[i].pdfIndex == nil {
+            notebook.pages[i].backdrop = name
+            // the ruling would go over the picture
+            if name != nil { notebook.pages[i].template = .blank }
+        }
+        library.save(notebook)
+        canvas.reloadPaper(notebook, page)
+        library.refreshThumb(notebook.id)
+        for i in targets { pageVersion[notebook.pages[i].id, default: 0] += 1 }
     }
 
     func setPaper(_ p: Paper) {
