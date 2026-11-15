@@ -34,7 +34,16 @@ enum Demo {
         case "stickers": open("Idee progetto")
         case "dark": open("Diario serale")
         case "paper", "papers": open("Riunioni")
-        case "palette": open("Fisica 1")
+        case "palette", "zoom", "lasso", "history", "timer": open("Fisica 1")
+        case "stats":
+            // two weeks of reviews, with a gap, so the chart and the streak have something to show
+            let cal = Calendar.current
+            for back in 0..<14 where back != 9 {
+                guard let day = cal.date(byAdding: .day, value: -back, to: Date()) else { continue }
+                for k in 0..<(6 + (back * 7) % 17) { StudyLog.shared.logReview(right: k % 5 != 0, now: day) }
+                if back % 3 == 0 { StudyLog.shared.logFocus(minutes: 25, now: day) }
+            }
+            router.showStats = true
         case "pdf", "ocr": open("Dispensa termodinamica")
         case "shapes": open("Fisica 1", page: 1)
         case "trash":

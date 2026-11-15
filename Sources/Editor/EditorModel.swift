@@ -174,8 +174,11 @@ final class EditorModel {
                 guard let self else { return }
                 self.canUndo = self.canvas.canUndo
                 self.canRedo = self.canvas.canRedo
+                if self.zoomOn { self.zoomPad.refresh() }
             }
         }
+        setUpZoomPad()
+        canvas.onSelectionChange = { [weak self] on in self?.hasSelection = on }
         canvas.onPull = { [weak self] direction in self?.pulled(direction) }
         canvas.onPencilTap = { [weak self] in self?.toggleEraser() }
         canvas.onSqueeze = { [weak self] s in self?.squeezed(s) }
@@ -234,6 +237,8 @@ final class EditorModel {
 
     func showPage() {
         guard notebook.pages.indices.contains(pageIndex) else { return }
+        if replaying { stopReplay() }
+        if zoomOn { toggleZoom() }
         if picking != nil { endPicking() }
         misses = []
         canvas.load(notebook, page)
@@ -282,6 +287,7 @@ final class EditorModel {
 
     func close() {
         guard !openElsewhere else { return }
+        if replaying { stopReplay() }
         shareTask?.cancel()
         if !released {
             released = true
@@ -378,8 +384,10 @@ final class EditorModel {
     }
 
     private func applyTool() {
+        defer { if zoomOn { zoomPad.syncTool() } }
         let t = tool
         canvas.laser = t == .laser
+        canvas.lassoMode = t == .lasso
         if audio.listening { audio.listening = false }
         if t == .hand {
             canvas.pick = nil
@@ -397,7 +405,7 @@ final class EditorModel {
             canvas.setTool(PKInkingTool(s.inkType, color: c, width: w * s.widthFactor))
         case .highlighter: canvas.setTool(PKInkingTool(.marker, color: c, width: w))
         case .eraser: canvas.setTool(w == 0 ? PKEraserTool(.vector) : PKEraserTool(.bitmap, width: w))
-        case .lasso: canvas.setTool(PKLassoTool())
+        case .lasso: break
         case .shape, .tape, .hand, .laser: break
         }
     }
@@ -694,6 +702,163 @@ final class EditorModel {
         for p in notebook.pages { pageVersion[p.id, default: 0] += 1 }
     }
 
+    // MARK: Lasso selection
+
+    /// Something is chosen with the lasso.
+    var hasSelection = false
+
+    func recolorSelection(_ hex: String) { canvas.recolorSelection(UIColor(hex: hex)) }
+    func duplicateSelection() { canvas.duplicateSelection() }
+    func deleteSelection() { canvas.deleteSelection() }
+    func clearSelection() { canvas.clearSelection() }
+
+    func copySelection() {
+        canvas.copySelection()
+        notice = String(localized: "Copiato: incollalo da … → Aggiungi → Incolla, anche in un altro quaderno.")
+    }
+
+    /// Reads the handwriting that was chosen with the lasso.
+    func readSelection() {
+        guard let r = canvas.selectionRect else { return }
+        readInk(in: r.insetBy(dx: -4, dy: -4))
+    }
+
+    // MARK: Zoom window
+
+    /// The zoom window is open.
+    var zoomOn = false
+    /// Where the zoom window writes on the page, in page points.
+    var zoomBox = CGRect(x: 70, y: 100, width: 200, height: 70)
+    var zoomLevel = CGFloat(UserDefaults.standard.object(forKey: "zoomLevel") as? Double ?? 2.5)
+    @ObservationIgnored let zoomPad = ZoomPadView()
+
+    private func setUpZoomPad() {
+        zoomPad.page = canvas
+        zoomPad.zoom = zoomLevel
+        zoomPad.onSize = { [weak self] size in self?.zoomResized(size) }
+        zoomPad.onCommit = { [weak self] right in self?.zoomCommitted(right) }
+    }
+
+    func toggleZoom() {
+        zoomOn.toggle()
+        if zoomOn {
+            if picking != nil { endPicking() }
+            if !tool.inks || tool == .tape { select(.pen) }
+            // starts at the left margin, near the top of what is in view
+            let c = canvas.visibleCenter
+            zoomBox.origin = CGPoint(x: zoomMargin, y: max(20, c.y - 120))
+            clampZoomBox()
+            canvas.onZoomTap = { [weak self] p in self?.moveZoom(to: p) }
+            zoomPad.syncTool()
+            showZoomBox()
+        } else {
+            canvas.onZoomTap = nil
+            canvas.showZoomBox(nil)
+        }
+    }
+
+    /// The left edge where a new line starts: after the margin of lined paper.
+    private var zoomMargin: CGFloat { page.template == .lined || page.template == .checklist ? 70 : 24 }
+
+    private func zoomResized(_ size: CGSize) {
+        zoomBox.size = size
+        clampZoomBox()
+        showZoomBox()
+    }
+
+    func setZoomLevel(_ z: CGFloat) {
+        zoomLevel = z
+        UserDefaults.standard.set(Double(z), forKey: "zoomLevel")
+        zoomPad.zoom = z
+        zoomPad.syncTool()
+    }
+
+    func zoomStep(_ dir: CGFloat) {
+        zoomBox.origin.x += dir * zoomBox.width * 0.7
+        if dir > 0, zoomBox.maxX > page.size.width - 4 { zoomNewLine(); return }
+        clampZoomBox()
+        showZoomBox()
+    }
+
+    func zoomNewLine() {
+        zoomBox.origin.x = zoomMargin
+        zoomBox.origin.y += zoomBox.height * 0.75
+        clampZoomBox()
+        showZoomBox()
+    }
+
+    func moveZoom(to p: CGPoint) {
+        zoomBox.origin = CGPoint(x: p.x - zoomBox.width * 0.1, y: p.y - zoomBox.height * 0.72)
+        clampZoomBox()
+        showZoomBox()
+    }
+
+    /// The writing reached the right end of the strip: the box moves on.
+    private func zoomCommitted(_ right: CGFloat) {
+        if right > 0.8 { zoomStep(1) }
+    }
+
+    private func clampZoomBox() {
+        let s = page.size
+        zoomBox.origin.x = min(max(0, zoomBox.origin.x), max(0, s.width - zoomBox.width))
+        zoomBox.origin.y = min(max(0, zoomBox.origin.y), max(0, s.height - zoomBox.height))
+    }
+
+    private func showZoomBox() {
+        guard zoomOn else { return }
+        canvas.showZoomBox(zoomBox)
+        zoomPad.box = zoomBox
+        zoomPad.refresh()
+    }
+
+    // MARK: Lesson replay
+
+    /// The writing of the page comes back stroke by stroke while the recording plays, as it was
+    /// written during the lesson.
+    var replaying = false
+    @ObservationIgnored private var replayTask: Task<Void, Never>?
+
+    func toggleReplay() { replaying ? stopReplay() : startReplay() }
+
+    func startReplay() {
+        guard let rec = audio.current, !audio.recording else { return }
+        if picking != nil { endPicking() }
+        replaying = true
+        canvas.beginReplay()
+        if !audio.playing { audio.play(rec, at: audio.position >= audio.duration - 0.2 ? 0 : audio.position) }
+        replayTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.replaying else { return }
+                self.canvas.showReplay(until: rec.start.addingTimeInterval(self.audio.position))
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+
+    func stopReplay() {
+        replayTask?.cancel()
+        replayTask = nil
+        replaying = false
+        canvas.endReplay()
+    }
+
+    /// Puts back an earlier version of the page in view.
+    func restoreVersion(_ v: PageHistory.Version) {
+        canvas.saveNow()
+        guard let restored = PageHistory.restore(v, notebook, page) else {
+            notice = String(localized: "Non riesco a ripristinare questa versione.")
+            return
+        }
+        notebook.pages[pageIndex] = restored
+        library.save(notebook)
+        canvas.reload(notebook, page)
+        layerID = canvas.layerID
+        pageVersion[page.id, default: 0] += 1
+        if pageIndex == 0 { library.refreshThumb(notebook.id) }
+        Indexer.shared.schedule(notebook, page: page.id)
+        notice = String(localized: "Versione ripristinata.")
+    }
+
     /// A picture as the paper of this page or of every page (nil = back to the ordinary paper).
     /// The picture is copied into the notebook, so it goes with it when synced or shared.
     func setBackdrop(_ img: UIImage?, allPages: Bool) {
@@ -860,6 +1025,7 @@ final class EditorModel {
 
     /// Puts what is on the clipboard on the page: a picture, or text in a new box. False if there is nothing.
     func paste() -> Bool {
+        if canvas.pasteInk() { return true }
         let board = UIPasteboard.general
         if board.hasImages, let img = board.image {
             addImage(img)

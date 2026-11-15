@@ -13,6 +13,7 @@ final class Router {
     var showNew = false
     var showIntro = false
     var showTrash = false
+    var showStats = false
     /// The flashcards of a notebook, opened by a shortcut.
     var study: Notebook?
 }
@@ -85,6 +86,9 @@ struct LibraryView: View {
             StudyView(notebook: nb, onUpdate: { library.updateCard(nb.id, $0) }, onDelete: { library.deleteCard(nb.id, $0) })
         }
         .onChange(of: inbox.pending) { _, a in handle(a) }
+        .sheet(isPresented: $router.showStats) {
+            StudyStatsView().environment(library)
+        }
         .sheet(isPresented: $router.showTrash) {
             NavigationStack { TrashView() }
                 .environment(library)
@@ -281,6 +285,8 @@ struct ShelfView: View {
                 Button { router.showSearch = true } label: { Image(systemName: "magnifyingglass") }
                     .accessibilityLabel("Cerca")
                 if folder == nil {
+                    Button { router.showStats = true } label: { Image(systemName: "chart.bar.xaxis") }
+                        .accessibilityLabel("Statistiche di studio")
                     Button { router.showIntro = true } label: { Image(systemName: "questionmark.circle") }
                         .accessibilityLabel("Introduzione")
                     Button { router.showSettings = true } label: { Image(systemName: "gearshape") }

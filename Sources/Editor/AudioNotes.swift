@@ -254,7 +254,7 @@ struct AudioBar: View {
 
     private var playerRow: some View {
         HStack(spacing: 10) {
-            Button { audio.startRecording() } label: {
+            Button { if model.replaying { model.stopReplay() }; audio.startRecording() } label: {
                 Image(systemName: "record.circle").font(.title2).foregroundStyle(Theme.bad)
             }
             .accessibilityLabel("Registra")
@@ -270,6 +270,13 @@ struct AudioBar: View {
                 Text("\(AudioNotes.clock(audio.position)) / \(AudioNotes.clock(audio.duration))")
                     .font(.caption.monospacedDigit()).foregroundStyle(Theme.sub)
                     .fixedSize()
+                Button { model.toggleReplay() } label: {
+                    Image(systemName: "play.rectangle").font(.body.weight(model.replaying ? .bold : .regular))
+                        .foregroundStyle(model.replaying ? Theme.bg : Theme.text)
+                        .frame(width: 34, height: 30)
+                        .background(model.replaying ? Theme.accent : .clear, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .accessibilityLabel("Rivedi la scrittura mentre ascolti")
             } else {
                 Text(model.recordings.isEmpty ? String(localized: "Tocca il pallino rosso per registrare mentre scrivi.") : String(localized: "Scegli una registrazione dall'elenco."))
                     .font(.caption).foregroundStyle(Theme.sub)
@@ -286,7 +293,7 @@ struct AudioBar: View {
                 Menu { recordingsMenu } label: { Image(systemName: "list.bullet").frame(width: 30, height: 30) }
                     .accessibilityLabel("Registrazioni")
             }
-            Button { audio.stopAll(); audio.panel = false } label: {
+            Button { if model.replaying { model.stopReplay() }; audio.stopAll(); audio.panel = false } label: {
                 Image(systemName: "xmark").font(.footnote.weight(.bold)).foregroundStyle(Theme.sub).frame(width: 26, height: 30)
             }
             .accessibilityLabel("Chiudi")

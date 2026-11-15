@@ -165,14 +165,16 @@ enum PageRenderer {
     /// Insets of the text inside a box; the editor's UITextView uses the same so nothing jumps on export.
     static let textInset = UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
 
-    static func drawItems(_ nb: Notebook, _ items: [PageItem], dark: Bool = false) {
+    static func drawItems(_ nb: Notebook, _ items: [PageItem], dark: Bool = false, imageDir: URL? = nil) {
         for item in items {
             switch item.kind {
             case .text:
                 let r = item.frame.inset(by: textInset)
                 (item.text as NSString).draw(with: r, options: [.usesLineFragmentOrigin], attributes: textAttributes(item, dark: dark), context: nil)
             case .image:
-                if let name = item.image, let img = UIImage(contentsOfFile: Store.image(nb.id, name).path) {
+                // an earlier version of the page keeps its own copies of the pictures
+                let kept = item.image.flatMap { n in imageDir.map { $0.appendingPathComponent("img-" + n) } }
+                if let name = item.image, let img = kept.flatMap({ UIImage(contentsOfFile: $0.path) }) ?? UIImage(contentsOfFile: Store.image(nb.id, name).path) {
                     img.draw(in: item.frame)
                 }
             case .tape:
@@ -193,7 +195,8 @@ enum PageRenderer {
     }
 
     /// The whole page as an image `width` pixels wide.
-    static func render(_ nb: Notebook, _ page: PageInfo, width: CGFloat) -> UIImage {
+    /// `ink` and `items` draw something else than what is saved (an earlier version of the page).
+    static func render(_ nb: Notebook, _ page: PageInfo, width: CGFloat, ink: PKDrawing? = nil, items given: [PageItem]? = nil, imageDir: URL? = nil) -> UIImage {
         let k = width / page.size.width
         let fmt = UIGraphicsImageRendererFormat()
         fmt.scale = k
@@ -201,12 +204,12 @@ enum PageRenderer {
         if nb.isText {
             return UIGraphicsImageRenderer(size: page.size, format: fmt).image { r in TextDoc.drawFirstPage(nb, size: page.size, in: r.cgContext) }
         }
-        let drawing = Store.loadInk(nb.id, page)
-        let items = Store.loadItems(nb.id, page.id)
+        let drawing = ink ?? Store.loadInk(nb.id, page)
+        let items = given ?? Store.loadItems(nb.id, page.id)
         let dark = isDark(nb, page)
         return UIGraphicsImageRenderer(size: page.size, format: fmt).image { r in
             drawBackground(nb, page, in: r.cgContext)
-            drawItems(nb, items, dark: dark)
+            drawItems(nb, items, dark: dark, imageDir: imageDir)
             if !drawing.strokes.isEmpty {
                 inkImage(drawing, size: page.size, scale: k, dark: dark)
                     .draw(in: CGRect(origin: .zero, size: page.size), blendMode: dark ? .normal : .multiply, alpha: 1)

@@ -173,6 +173,7 @@ final class Library {
                   let nb = try? Store.decoder.decode(Notebook.self, from: data) else { continue }
             if let when = nb.deletedAt, when < limit {
                 try? FileManager.default.removeItem(at: d)
+                PageHistory.removeAll(nb.id)
             } else {
                 list.append(nb)
             }
@@ -541,12 +542,14 @@ final class Library {
     /// Removes a notebook from the trash for good.
     func deleteForever(_ id: UUID) {
         try? FileManager.default.removeItem(at: Store.trash.appendingPathComponent(id.uuidString, isDirectory: true))
+        PageHistory.removeAll(id)
         trashed.removeAll { $0.id == id }
     }
 
     func emptyTrash() {
         for nb in trashed {
             try? FileManager.default.removeItem(at: Store.trash.appendingPathComponent(nb.id.uuidString, isDirectory: true))
+            PageHistory.removeAll(nb.id)
         }
         trashed = []
     }

@@ -259,6 +259,7 @@ struct StudyView: View {
 
     private func answer(_ card: Flashcard, _ g: Flashcard.Grade) {
         let next = card.answered(g)
+        StudyLog.shared.logReview(right: g != .again)
         if let i = cards.firstIndex(where: { $0.id == card.id }) { cards[i] = next }
         onUpdate(next)
         queue.removeFirst()

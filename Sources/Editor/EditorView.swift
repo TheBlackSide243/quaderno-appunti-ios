@@ -33,6 +33,7 @@ struct EditorView: View {
     @State private var showLayers = false
     @State private var showAssistant = false
     @State private var showPaperSheet = false
+    @State private var showHistory = false
     /// Set when the editor is the whole window (iPad): closing it closes the window.
     private var onClose: (() -> Void)?
 
@@ -103,6 +104,14 @@ struct EditorView: View {
                     }
                     if model.presenting {
                         PresentBar(model: model)
+                    } else if model.hasSelection && model.tool == .lasso {
+                        SelectionBar(model: model)
+                            .padding(.horizontal, 12)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else if model.zoomOn {
+                        ZoomBar(model: model)
+                            .padding(.horizontal, 10)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     } else if let item = model.selected, !model.drawMode {
                         ItemBar(item: item, model: model)
                             .padding(.horizontal, 12)
@@ -114,6 +123,9 @@ struct EditorView: View {
                 }
                 .padding(.bottom, 10)
                 VStack(spacing: 8) {
+                    if !model.presenting {
+                        FocusBadge().frame(maxWidth: .infinity, alignment: .trailing)
+                    }
                     ErrorBanner(error: $error)
                     if model.checkingSpelling {
                         Label("Controllo l'ortografia…", systemImage: "textformat.abc.dottedunderline")
@@ -139,6 +151,19 @@ struct EditorView: View {
                             Text(p.prompt).font(.footnote.weight(.semibold)).foregroundStyle(Theme.bg)
                             Button { model.endPicking() } label: {
                                 Text("Annulla").font(.footnote.weight(.bold)).foregroundStyle(Theme.accent)
+                                    .padding(.horizontal, 10).padding(.vertical, 4)
+                                    .background(Theme.bg, in: Capsule())
+                            }
+                        }
+                        .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 6)
+                        .background(Theme.accent, in: Capsule())
+                    }
+                    if model.replaying {
+                        HStack(spacing: 10) {
+                            Image(systemName: "play.rectangle.fill").foregroundStyle(Theme.bg)
+                            Text("La scrittura torna mentre ascolti la lezione").font(.footnote.weight(.semibold)).foregroundStyle(Theme.bg)
+                            Button { model.stopReplay() } label: {
+                                Text("Fine").font(.footnote.weight(.bold)).foregroundStyle(Theme.accent)
                                     .padding(.horizontal, 10).padding(.vertical, 4)
                                     .background(Theme.bg, in: Capsule())
                             }
@@ -175,6 +200,8 @@ struct EditorView: View {
             .animation(.easeOut(duration: 0.18), value: model.notice)
             .animation(.easeOut(duration: 0.18), value: model.picking)
             .animation(.easeOut(duration: 0.25), value: model.presenting)
+            .animation(.easeOut(duration: 0.2), value: model.zoomOn)
+            .animation(.easeOut(duration: 0.18), value: model.hasSelection)
             .background(Theme.desk)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbar }
@@ -225,6 +252,10 @@ struct EditorView: View {
             .sheet(isPresented: $showLayers) {
                 LayersView(model: model)
                     .presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $showHistory) {
+                PageHistoryView(model: model)
+                    .presentationDetents([.large])
             }
             .sheet(isPresented: $showPaperSheet) {
                 PaperSheet(onPick: { img, all in model.setBackdrop(img, allPages: all) })
@@ -302,6 +333,16 @@ struct EditorView: View {
         case "layers": showLayers = true
         case "assistant": showAssistant = true
         case "papers": showPaperSheet = true
+        case "zoom": model.toggleZoom()
+        case "lasso":
+            model.select(.lasso)
+            model.canvas.selectInside([CGPoint(x: 230, y: 270), CGPoint(x: 430, y: 270), CGPoint(x: 430, y: 360), CGPoint(x: 230, y: 360)])
+        case "history":
+            model.canvas.saveNow()
+            PageHistory.snapshot(model.notebook, model.page, now: Date().addingTimeInterval(-26 * 3600))
+            PageHistory.snapshot(model.notebook, model.page, now: Date().addingTimeInterval(-3 * 3600))
+            showHistory = true
+        case "timer": FocusTimer.shared.start()
         case "palette": model.palette = CGPoint(x: model.canvas.bounds.midX - 120, y: model.canvas.bounds.midY)
         default: break
         }
@@ -361,10 +402,10 @@ struct EditorView: View {
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
             Button { model.canvas.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-                .disabled(!model.canUndo)
+                .disabled(!model.canUndo || model.replaying)
                 .accessibilityLabel("Annulla")
             Button { model.canvas.redo() } label: { Image(systemName: "arrow.uturn.forward") }
-                .disabled(!model.canRedo)
+                .disabled(!model.canRedo || model.replaying)
                 .accessibilityLabel("Ripeti")
             if regular && !model.notebook.isBoard {
                 Button { model.toggleBookmark(model.pageIndex) } label: {
@@ -413,11 +454,19 @@ struct EditorView: View {
             } label: { Label("Copri di nuovo tutti i nastri", systemImage: "rectangle.on.rectangle") }
             Button { model.startPicking(.inkText) } label: { Label("Testo dalla scrittura", systemImage: "text.viewfinder") }
             Button { model.setPresenting(true) } label: { Label("Presentazione", systemImage: "play.rectangle") }
+            Button { FocusTimer.shared.active ? FocusTimer.shared.stop() : FocusTimer.shared.start() } label: {
+                Label(FocusTimer.shared.active ? String(localized: "Ferma il timer di studio") : String(localized: "Timer di studio (25 min)"), systemImage: "timer")
+            }
             Button { Task { await model.checkSpelling() } } label: { Label("Controlla l'ortografia", systemImage: "textformat.abc.dottedunderline") }
             Button { showAssistant = true } label: { Label("Assistente (riassunti, quiz, domande)", systemImage: "sparkles") }
         }
         Section("Aggiungi") {
             Button { showStickers = true } label: { Label("Adesivi", systemImage: "seal") }
+            if !model.notebook.isBoard {
+                Button { model.toggleZoom() } label: {
+                    Label(model.zoomOn ? String(localized: "Chiudi la finestra di zoom") : String(localized: "Finestra di zoom"), systemImage: "rectangle.and.text.magnifyingglass")
+                }
+            }
             if !regular && !model.notebook.isBoard {
                 Menu {
                     ForEach(PageTemplate.allCases) { t in
@@ -469,6 +518,7 @@ struct EditorView: View {
                 }
             } label: { Label("Carta", systemImage: "paintpalette") }
             Button { showText = true } label: { Label("Testo riconosciuto", systemImage: "text.viewfinder") }
+            Button { showHistory = true } label: { Label("Versioni precedenti", systemImage: "clock.arrow.circlepath") }
             Button(role: .destructive) { confirmClear = true } label: { Label("Cancella inchiostro", systemImage: "eraser") }
         }
         Section("Quaderno") {

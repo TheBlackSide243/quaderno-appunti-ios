@@ -2,6 +2,50 @@ import SwiftUI
 import UIKit
 
 /// Controls for the selected text box or picture.
+/// What can be done with what the lasso chose.
+struct SelectionBar: View {
+    let model: EditorModel
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(["1C1C20", "1D4ED8", "DC2626", "15803D", "7C3AED", "EA580C"], id: \.self) { hex in
+                    Button { model.recolorSelection(hex) } label: {
+                        Circle().fill(Color(uiColor: UIColor(hex: hex))).frame(width: 22, height: 22)
+                            .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+                            .frame(width: 32, height: 36)
+                    }
+                    .accessibilityLabel("Cambia colore")
+                }
+                Rectangle().fill(Theme.line).frame(width: 1, height: 24).padding(.horizontal, 4)
+                action("plus.square.on.square", String(localized: "Duplica")) { model.duplicateSelection() }
+                action("doc.on.doc", String(localized: "Copia")) { model.copySelection() }
+                action("text.viewfinder", String(localized: "Testo dalla scrittura")) { model.readSelection() }
+                action("trash", String(localized: "Elimina"), role: .destructive) { model.deleteSelection() }
+                Rectangle().fill(Theme.line).frame(width: 1, height: 24).padding(.horizontal, 4)
+                Button { model.clearSelection() } label: {
+                    Text("Fine").font(.subheadline.weight(.bold)).padding(.horizontal, 10).frame(height: 36)
+                }
+                .foregroundStyle(Theme.accent)
+            }
+            .padding(.horizontal, 10)
+        }
+        .frame(height: 50)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
+        .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
+        .frame(maxWidth: 560)
+    }
+
+    private func action(_ icon: String, _ label: String, role: ButtonRole? = nil, _ run: @escaping () -> Void) -> some View {
+        Button(role: role, action: run) {
+            Image(systemName: icon).font(.body.weight(.semibold)).frame(width: 40, height: 36)
+        }
+        .foregroundStyle(role == .destructive ? Theme.bad : Theme.text)
+        .accessibilityLabel(label)
+    }
+}
+
 struct ItemBar: View {
     let item: PageItem
     let model: EditorModel

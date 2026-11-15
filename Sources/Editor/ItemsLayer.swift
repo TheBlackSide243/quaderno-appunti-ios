@@ -144,6 +144,29 @@ final class ItemsLayer: UIView {
         remove(id)
     }
 
+    /// Moves and resizes the boxes chosen with the lasso, all together (boxes do not turn: only
+    /// their centre follows a turn).
+    func transformItems(_ ids: Set<UUID>, by t: CGAffineTransform, scale: CGFloat) {
+        for i in items.indices where ids.contains(items[i].id) {
+            var it = items[i]
+            let c = CGPoint(x: it.frame.midX, y: it.frame.midY).applying(t)
+            let w = it.w * scale, h = it.h * scale
+            it.frame = CGRect(x: c.x - w / 2, y: c.y - h / 2, width: w, height: h)
+            if it.kind == .text { it.fontSize = max(6, it.fontSize * scale) }
+            items[i] = it
+            views[it.id]?.apply(it)
+        }
+        onChange?()
+    }
+
+    func setHidden(_ ids: Set<UUID>, _ hidden: Bool) {
+        for id in ids { views[id]?.isHidden = hidden }
+    }
+
+    func removeItems(_ ids: Set<UUID>) {
+        for id in ids { remove(id) }
+    }
+
     func bringSelectedToFront() {
         guard let id = selectedID, let i = items.firstIndex(where: { $0.id == id }), let v = views[id] else { return }
         let item = items.remove(at: i)

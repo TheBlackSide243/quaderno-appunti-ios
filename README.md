@@ -91,6 +91,11 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
   uniforme, pastello, acquerello); **carta scura** nera o blu notte per scrivere la sera; **carte
   personalizzate** da una foto o dalle pagine di un PDF; con l'**Apple Pencil Pro** una stretta apre una
   tavolozza rapida vicino alla punta; **Comandi Rapidi** e Siri per creare, aprire e ripassare.
+- **Finestra di zoom** per scrivere in grande in una striscia in basso, che avanza da sola sulla
+  riga; **lazo** che sposta, ingrandisce, ruota, ricolora, duplica e copia la scrittura scelta;
+  **rivedi la lezione**: la scrittura ricompare mentre ascolti la registrazione; **versioni
+  precedenti** di ogni pagina da ripristinare; **statistiche di studio** con i giorni di fila e un
+  **timer di studio** di 25 minuti con le pause.
 - **Testo e foto** sulla pagina: riquadri di testo (dimensione, grassetto, colore) e immagini,
   da trascinare e ridimensionare; **Incolla** mette sulla pagina il testo o l'immagine copiati.
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in
