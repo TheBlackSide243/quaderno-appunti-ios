@@ -239,6 +239,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         canvas.addGestureRecognizer(tapeTap)
 
         canvas.drawingGestureRecognizer.addTarget(self, action: #selector(inkGesture))
+        setUpLasso()
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(tappedEmpty))
         tap.cancelsTouchesInView = false
@@ -320,6 +321,8 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         items.load(nb, Store.loadItems(nb.id, pg.id))
         links.bounds = CGRect(origin: .zero, size: pg.size)
         links.update(items.items, zoom: canvas.zoomScale)
+        clearSelection()
+        selectionHost.bounds = CGRect(origin: .zero, size: pg.size)
         shapeLayer.path = nil
         spellLayer.path = nil
         spellRects = []
@@ -403,6 +406,411 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         aboveInk.image = picture(list[(i + 1)...])
     }
 
+    // MARK: Lasso selection
+
+    /// The lasso: drawing round strokes and boxes chooses them; then they can be moved, made
+    /// bigger or smaller, turned, recoloured, copied, duplicated or deleted.
+    var lassoMode = false {
+        didSet {
+            guard lassoMode != oldValue else { return }
+            if !lassoMode { clearSelection() }
+            applyMode()
+        }
+    }
+    let selectionHost = SelectionHost()
+    private let lassoPan = UIPanGestureRecognizer()
+    private let lassoTap = UITapGestureRecognizer()
+    private let lassoLayer = CAShapeLayer()
+    private var lassoPoints: [CGPoint] = []
+    /// Indices of the chosen strokes in the canvas's drawing, and the chosen boxes.
+    private var selStrokes: [Int] = []
+    private var selItems: Set<UUID> = []
+    private var selOriginal: PKDrawing?
+    private var selFrame = CGRect.zero
+    /// Called when something gets chosen or nothing is chosen any more.
+    var onSelectionChange: ((Bool) -> Void)?
+    static let inkPasteType = "com.local.appunti.ink"
+
+    var hasSelection: Bool { !selStrokes.isEmpty || !selItems.isEmpty }
+    /// Where the chosen things are, in page points.
+    var selectionRect: CGRect? { hasSelection ? selFrame : nil }
+
+    private func setUpLasso() {
+        selectionHost.layer.anchorPoint = .zero
+        canvas.addSubview(selectionHost)
+        let box = selectionHost.box
+        box.onBegin = { [weak self] in self?.selectionMoveBegan() }
+        box.onEnd = { [weak self] m, s, t in self?.selectionMoveEnded(m, s, t) }
+        lassoLayer.fillColor = UIColor(Theme.accent).withAlphaComponent(0.06).cgColor
+        lassoLayer.strokeColor = UIColor(Theme.accent).cgColor
+        lassoLayer.lineJoin = .round
+        lassoLayer.zPosition = 15
+        items.layer.addSublayer(lassoLayer)
+        lassoPan.addTarget(self, action: #selector(lassoDragged))
+        lassoPan.maximumNumberOfTouches = 1
+        lassoPan.delegate = self
+        lassoPan.isEnabled = false
+        canvas.addGestureRecognizer(lassoPan)
+        lassoTap.addTarget(self, action: #selector(lassoTapped))
+        lassoTap.delegate = self
+        lassoTap.isEnabled = false
+        canvas.addGestureRecognizer(lassoTap)
+    }
+
+    @objc private func lassoDragged(_ g: UIPanGestureRecognizer) {
+        let p = g.location(in: items)
+        switch g.state {
+        case .began:
+            clearSelection()
+            let t = g.translation(in: items)
+            lassoPoints = [CGPoint(x: p.x - t.x, y: p.y - t.y), p]
+            drawLasso()
+        case .changed:
+            lassoPoints.append(p)
+            drawLasso()
+        case .ended:
+            lassoLayer.path = nil
+            selectInside(lassoPoints)
+            lassoPoints = []
+        default:
+            lassoLayer.path = nil
+            lassoPoints = []
+        }
+    }
+
+    private func drawLasso() {
+        let path = CGMutablePath()
+        path.addLines(between: lassoPoints)
+        let z = max(0.05, canvas.zoomScale)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        lassoLayer.lineWidth = 1.5 / z
+        lassoLayer.lineDashPattern = [NSNumber(value: Double(6 / z)), NSNumber(value: Double(4 / z))]
+        lassoLayer.path = path
+        CATransaction.commit()
+    }
+
+    @objc private func lassoTapped(_ g: UITapGestureRecognizer) {
+        guard hasSelection else { return }
+        let p = g.location(in: selectionHost)
+        if !selectionHost.box.frame.insetBy(dx: -12, dy: -12).contains(p) { clearSelection() }
+    }
+
+    /// Strokes with at least half of their points inside the lasso, and boxes with their centre inside.
+    func selectInside(_ poly: [CGPoint]) {
+        guard poly.count > 2 else { return }
+        let path = CGMutablePath()
+        path.addLines(between: poly)
+        path.closeSubpath()
+        var chosen: [Int] = []
+        for (i, s) in canvas.drawing.strokes.enumerated() {
+            let pts = s.path.map { $0.location.applying(s.transform) }
+            guard !pts.isEmpty else { continue }
+            let step = max(1, pts.count / 24)
+            var inside = 0, total = 0
+            for j in stride(from: 0, to: pts.count, by: step) {
+                total += 1
+                if path.contains(pts[j]) { inside += 1 }
+            }
+            if inside * 2 >= total { chosen.append(i) }
+        }
+        let boxes = items.items.filter { $0.kind != .tape && path.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }.map(\.id)
+        select(strokes: chosen, items: Set(boxes))
+    }
+
+    private func select(strokes: [Int], items ids: Set<UUID>) {
+        selStrokes = strokes
+        selItems = ids
+        guard hasSelection else {
+            clearSelection()
+            return
+        }
+        selFrame = currentSelectionBounds()
+        let box = selectionHost.box
+        box.isHidden = false
+        box.canRotate = !selStrokes.isEmpty && selItems.isEmpty
+        box.reset(to: selFrame.insetBy(dx: -6, dy: -6))
+        canvas.bringSubviewToFront(selectionHost)
+        onSelectionChange?(true)
+    }
+
+    private func currentSelectionBounds() -> CGRect {
+        var r = CGRect.null
+        let all = canvas.drawing.strokes
+        for i in selStrokes where all.indices.contains(i) { r = r.union(all[i].renderBounds) }
+        for it in items.items where selItems.contains(it.id) { r = r.union(it.frame) }
+        return r.isNull ? .zero : r
+    }
+
+    func clearSelection() {
+        if selOriginal != nil { selectionMoveEnded(.zero, 1, 0) }
+        let had = hasSelection
+        selStrokes = []
+        selItems = []
+        selectionHost.box.isHidden = true
+        selectionHost.box.picture.image = nil
+        lassoLayer.path = nil
+        if had { onSelectionChange?(false) }
+    }
+
+    /// A picture of the chosen strokes and boxes, to move around while the finger is down.
+    private func selectionPicture(in r: CGRect) -> UIImage? {
+        guard r.width > 0, r.height > 0, let nb = notebook else { return nil }
+        let strokes = selStrokes.compactMap { canvas.drawing.strokes.indices.contains($0) ? canvas.drawing.strokes[$0] : nil }
+        let scale = min(6, (window?.screen.scale ?? 2) * max(1, canvas.zoomScale))
+        var ink: UIImage?
+        if !strokes.isEmpty {
+            UITraitCollection(userInterfaceStyle: darkPaper ? .dark : .light).performAsCurrent {
+                ink = PKDrawing(strokes: strokes).image(from: r, scale: scale)
+            }
+        }
+        let boxes = items.items.filter { selItems.contains($0.id) }
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = scale
+        fmt.opaque = false
+        let dark = darkPaper
+        return UIGraphicsImageRenderer(size: r.size, format: fmt).image { ctx in
+            ctx.cgContext.saveGState()
+            ctx.cgContext.translateBy(x: -r.minX, y: -r.minY)
+            PageRenderer.drawItems(nb, boxes, dark: dark)
+            ctx.cgContext.restoreGState()
+            ink?.draw(in: CGRect(origin: .zero, size: r.size))
+        }
+    }
+
+    private func selectionMoveBegan() {
+        guard hasSelection, selOriginal == nil else { return }
+        let original = canvas.drawing
+        selectionHost.box.picture.image = selectionPicture(in: selectionHost.box.frame)
+        selOriginal = original
+        // the chosen strokes leave the page while their picture moves
+        let gone = Set(selStrokes)
+        loading = true
+        canvas.drawing = PKDrawing(strokes: original.strokes.enumerated().filter { !gone.contains($0.offset) }.map(\.element))
+        loading = false
+        items.setHidden(selItems, true)
+    }
+
+    private func selectionMoveEnded(_ move: CGPoint, _ scale: CGFloat, _ turn: CGFloat) {
+        guard let original = selOriginal else { return }
+        selOriginal = nil
+        // the centre the frame had before moving (a view's centre does not follow its transform)
+        let center = selectionHost.box.center
+        let t = SelectionBox.pageTransform(center: center, move: move, scale: scale, turn: turn)
+        loading = true
+        canvas.drawing = original
+        loading = false
+        items.setHidden(selItems, false)
+        if !t.isIdentity {
+            var d = original
+            for i in selStrokes where d.strokes.indices.contains(i) {
+                d.strokes[i].transform = d.strokes[i].transform.concatenating(t)
+            }
+            setDrawingUndoable(d)
+            if !selItems.isEmpty { items.transformItems(selItems, by: t, scale: scale) }
+        }
+        selFrame = currentSelectionBounds()
+        selectionHost.box.reset(to: selFrame.insetBy(dx: -6, dy: -6))
+    }
+
+    func recolorSelection(_ color: UIColor) {
+        guard !selStrokes.isEmpty else { return }
+        var d = canvas.drawing
+        for i in selStrokes where d.strokes.indices.contains(i) {
+            d.strokes[i].ink = PKInk(d.strokes[i].ink.inkType, color: color)
+        }
+        setDrawingUndoable(d)
+    }
+
+    /// A copy of the chosen strokes and text boxes a little lower and to the right, chosen in their place.
+    func duplicateSelection() {
+        guard hasSelection else { return }
+        let shift = CGAffineTransform(translationX: 24, y: 24)
+        var d = canvas.drawing
+        let first = d.strokes.count
+        let copies = selStrokes.compactMap { d.strokes.indices.contains($0) ? d.strokes[$0] : nil }.map { s -> PKStroke in
+            var c = s
+            c.transform = s.transform.concatenating(shift)
+            return c
+        }
+        d.strokes.append(contentsOf: copies)
+        if !copies.isEmpty { setDrawingUndoable(d) }
+        var newItems: Set<UUID> = []
+        for it in items.items where selItems.contains(it.id) && it.kind == .text {
+            var c = it
+            c.id = UUID()
+            c.x += 24
+            c.y += 24
+            items.add(c, edit: false, select: false)
+            newItems.insert(c.id)
+        }
+        select(strokes: Array(first..<(first + copies.count)), items: newItems)
+    }
+
+    func deleteSelection() {
+        guard hasSelection else { return }
+        if !selStrokes.isEmpty {
+            let gone = Set(selStrokes)
+            let d = PKDrawing(strokes: canvas.drawing.strokes.enumerated().filter { !gone.contains($0.offset) }.map(\.element))
+            setDrawingUndoable(d)
+        }
+        let boxes = selItems
+        selStrokes = []
+        selItems = []
+        items.removeItems(boxes)
+        clearSelection()
+        onSelectionChange?(false)
+    }
+
+    /// Copies the chosen strokes (as ink for this app, and as a picture for the others).
+    func copySelection() {
+        guard hasSelection else { return }
+        let strokes = selStrokes.compactMap { canvas.drawing.strokes.indices.contains($0) ? canvas.drawing.strokes[$0] : nil }
+        var entry: [String: Any] = [:]
+        if !strokes.isEmpty { entry[Self.inkPasteType] = PKDrawing(strokes: strokes).dataRepresentation() }
+        if let png = selectionPicture(in: selFrame)?.pngData() { entry["public.png"] = png }
+        UIPasteboard.general.setItems([entry])
+    }
+
+    /// Puts copied ink on the page, in the middle of what is in view. False if there is none.
+    func pasteInk() -> Bool {
+        guard let data = UIPasteboard.general.data(forPasteboardType: Self.inkPasteType),
+              let pasted = try? PKDrawing(data: data), !pasted.strokes.isEmpty else { return false }
+        let b = pasted.bounds
+        let c = visibleCenter
+        let shift = CGAffineTransform(translationX: c.x - b.midX, y: c.y - b.midY)
+        var d = canvas.drawing
+        let first = d.strokes.count
+        d.strokes.append(contentsOf: pasted.strokes.map { s -> PKStroke in
+            var n = s
+            n.transform = s.transform.concatenating(shift)
+            return n
+        })
+        setDrawingUndoable(d)
+        if lassoMode { select(strokes: Array(first..<d.strokes.count), items: []) }
+        return true
+    }
+
+    // MARK: Zoom window
+
+    private let zoomBoxLayer = CAShapeLayer()
+    private let zoomTap = UITapGestureRecognizer()
+    /// A tap with the finger on the page while the zoom window is open, in page points.
+    var onZoomTap: ((CGPoint) -> Void)?
+
+    private func setUpZoomBox() {
+        zoomBoxLayer.fillColor = UIColor(Theme.accent).withAlphaComponent(0.10).cgColor
+        zoomBoxLayer.strokeColor = UIColor(Theme.accent).cgColor
+        zoomBoxLayer.lineDashPattern = [5, 4]
+        zoomBoxLayer.zPosition = 14
+        items.layer.addSublayer(zoomBoxLayer)
+        zoomTap.addTarget(self, action: #selector(zoomTapped))
+        zoomTap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        zoomTap.isEnabled = false
+        canvas.addGestureRecognizer(zoomTap)
+    }
+
+    /// Shows where the zoom window writes (nil = hides it) and keeps that place in view.
+    func showZoomBox(_ r: CGRect?) {
+        if zoomBoxLayer.superlayer == nil { setUpZoomBox() }
+        zoomTap.isEnabled = r != nil
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        zoomBoxLayer.lineWidth = 1.5 / max(0.05, canvas.zoomScale)
+        zoomBoxLayer.path = r.map { UIBezierPath(rect: $0).cgPath }
+        CATransaction.commit()
+        guard let r else { return }
+        let z = canvas.zoomScale
+        let visible = CGRect(x: canvas.contentOffset.x / z, y: canvas.contentOffset.y / z,
+                             width: canvas.bounds.width / z, height: (canvas.bounds.height - 260) / z)
+        if !visible.contains(r) {
+            canvas.scrollRectToVisible(CGRect(x: r.minX * z - 20, y: r.minY * z - 60, width: r.width * z + 40, height: r.height * z + 120), animated: true)
+        }
+    }
+
+    @objc private func zoomTapped(_ g: UITapGestureRecognizer) {
+        onZoomTap?(g.location(in: items))
+    }
+
+    /// Strokes made elsewhere (the zoom window) added to the page, with undo.
+    func appendStrokes(_ strokes: [PKStroke]) {
+        guard !strokes.isEmpty else { return }
+        var d = canvas.drawing
+        d.strokes.append(contentsOf: strokes)
+        setDrawingUndoable(d)
+    }
+
+    /// A picture of a part of the page as it is now: paper, boxes and every visible layer.
+    func snapshot(of r: CGRect, scale: CGFloat) -> UIImage? {
+        guard let nb = notebook, let pg = page, r.width > 0, r.height > 0 else { return nil }
+        let dark = darkPaper
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = scale
+        fmt.opaque = true
+        var below: [PKStroke] = [], above: [PKStroke] = []
+        if let lid = layerID, let i = pg.inkLayers.firstIndex(where: { $0.id == lid }), pg.inkLayers.count > 1 {
+            below = pg.inkLayers[..<i].filter { !$0.isHidden }.flatMap { Store.loadDrawing(nb.id, $0.id).strokes }
+            above = pg.inkLayers[(i + 1)...].filter { !$0.isHidden }.flatMap { Store.loadDrawing(nb.id, $0.id).strokes }
+        }
+        var ink = UIImage()
+        UITraitCollection(userInterfaceStyle: dark ? .dark : .light).performAsCurrent {
+            ink = PKDrawing(strokes: below + canvas.drawing.strokes + above).image(from: r, scale: scale)
+        }
+        let list = items.items
+        return UIGraphicsImageRenderer(size: r.size, format: fmt).image { ctx in
+            let c = ctx.cgContext
+            c.saveGState()
+            c.translateBy(x: -r.minX, y: -r.minY)
+            c.clip(to: r)
+            PageRenderer.drawBackground(nb, pg, in: c)
+            PageRenderer.drawItems(nb, list.filter { $0.kind != .tape }, dark: dark)
+            c.restoreGState()
+            ink.draw(in: CGRect(origin: .zero, size: r.size), blendMode: dark ? .normal : .multiply, alpha: 1)
+        }
+    }
+
+    // MARK: Lesson replay
+
+    private var replayFull: PKDrawing?
+    private var replayShown = -1
+
+    /// From now on the canvas shows only part of the ink, without saving it or letting anyone write.
+    func beginReplay() {
+        guard replayFull == nil else { return }
+        saveNow()
+        replayFull = canvas.drawing
+        replayShown = -1
+        canvas.drawingGestureRecognizer.isEnabled = false
+    }
+
+    /// Shows the strokes written up to `t`.
+    func showReplay(until t: Date) {
+        guard let full = replayFull else { return }
+        let visible = full.strokes.filter { $0.path.creationDate <= t }
+        guard visible.count != replayShown else { return }
+        replayShown = visible.count
+        loading = true
+        canvas.drawing = PKDrawing(strokes: visible)
+        loading = false
+    }
+
+    func endReplay() {
+        guard let full = replayFull else { return }
+        replayFull = nil
+        loading = true
+        canvas.drawing = full
+        loading = false
+        applyMode()
+    }
+
+    /// Reads the page again from its files (an earlier version was put back).
+    func reload(_ nb: Notebook, _ pg: PageInfo) {
+        saveNow()
+        page = nil
+        notebook = nil
+        load(nb, pg)
+    }
+
     /// After a layer was hidden, shown or moved.
     func reloadLayers(_ nb: Notebook, _ pg: PageInfo) {
         notebook = nb
@@ -418,6 +826,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         aboveInk.bounds = CGRect(origin: .zero, size: pg.size)
         items.bounds = CGRect(origin: .zero, size: pg.size)
         links.bounds = CGRect(origin: .zero, size: pg.size)
+        selectionHost.bounds = CGRect(origin: .zero, size: pg.size)
         if bounds.width > 40, bounds.height > 40 {
             let whole = min((bounds.width - 20) / pg.size.width, (bounds.height - 20) / pg.size.height)
             if whole.isFinite, whole > 0 { canvas.minimumZoomScale = min(canvas.minimumZoomScale, whole * 0.9) }
@@ -471,6 +880,8 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         saveTask?.cancel()
         guard dirty, let nb = notebook, let pg = page else { return }
         dirty = false
+        // how the page was before this writing, for … → Page → Earlier versions
+        PageHistory.snapshotIfDue(nb, pg)
         Store.saveDrawing(canvas.drawing, nb.id, layerID ?? pg.id)
         Store.saveItems(items.items, nb.id, pg.id)
         stamps = currentStamps()
@@ -513,6 +924,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         canvas.bringSubviewToFront(aboveInk)
         canvas.bringSubviewToFront(items)
         canvas.bringSubviewToFront(links)
+        canvas.bringSubviewToFront(selectionHost)
         canvas.sendSubviewToBack(paper)
         canvas.insertSubview(belowInk, aboveSubview: paper)
         multiplyInk()
@@ -523,7 +935,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     /// multiplying would hide the ink, so it is laid on as it is.
     private func multiplyInk() {
         let filter: String? = darkPaper ? nil : "multiplyBlendMode"
-        for v in canvas.subviews where v !== paper && v !== items && v !== links {
+        for v in canvas.subviews where v !== paper && v !== items && v !== links && v !== selectionHost {
             if (v.layer.compositingFilter as? String) != filter { v.layer.compositingFilter = filter }
         }
     }
@@ -559,6 +971,9 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         items.layer.position = .zero
         links.transform = t
         links.layer.position = .zero
+        selectionHost.transform = t
+        selectionHost.layer.position = .zero
+        selectionHost.setZoom(z)
         links.update(items.items, zoom: z)
         let dx = max(0, (bounds.width - size.width) / 2)
         let dy = max(12, (bounds.height - size.height) / 2)
@@ -630,8 +1045,10 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     // MARK: Modes
 
     private func applyMode() {
-        let free = drawMode && !listenMode && pick == nil
-        canvas.drawingGestureRecognizer.isEnabled = free && shape == nil && !laser
+        let free = drawMode && !listenMode && pick == nil && replayFull == nil
+        canvas.drawingGestureRecognizer.isEnabled = free && shape == nil && !laser && !lassoMode
+        lassoPan.isEnabled = free && lassoMode
+        lassoTap.isEnabled = free && lassoMode
         shapePan.isEnabled = free && shape != nil && !laser
         laserPan.isEnabled = free && laser
         pickPan.isEnabled = drawMode && !listenMode && pick != nil
@@ -706,6 +1123,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         var types = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
         if fingerDraws { types.append(NSNumber(value: UITouch.TouchType.direct.rawValue)) }
         shapePan.allowedTouchTypes = types
+        lassoPan.allowedTouchTypes = types
         // choosing an area works with any finger; tape is drawn like ink
         if case .tape = pick {
             pickPan.allowedTouchTypes = types
@@ -716,7 +1134,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
 
     /// The page must not scroll while a shape is being drawn or the laser is moving.
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
-        (g === shapePan || g === laserPan || g === pickPan) && other === canvas.panGestureRecognizer
+        (g === shapePan || g === laserPan || g === pickPan || g === lassoPan) && other === canvas.panGestureRecognizer
     }
 
     /// A tap on tape works together with the other gestures of the page.
@@ -726,6 +1144,11 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
 
     /// Shapes and the laser do not start on a link button.
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        if g === lassoPan {
+            // a drag on the chosen things moves them instead of drawing a new lasso
+            if hasSelection, selectionHost.box.frame.insetBy(dx: -12, dy: -12).contains(g.location(in: selectionHost)) { return false }
+            return links.button(at: g.location(in: links)) == nil
+        }
         if g === shapePan || g === laserPan || g === pickPan {
             return links.button(at: g.location(in: links)) == nil
         }
@@ -882,8 +1305,8 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         }
     }
 
-    func undo() { canvas.undoManager?.undo(); onUndoChange?() }
-    func redo() { canvas.undoManager?.redo(); onUndoChange?() }
+    func undo() { clearSelection(); canvas.undoManager?.undo(); onUndoChange?() }
+    func redo() { clearSelection(); canvas.undoManager?.redo(); onUndoChange?() }
     var canUndo: Bool { canvas.undoManager?.canUndo ?? false }
     var canRedo: Bool { canvas.undoManager?.canRedo ?? false }
 
