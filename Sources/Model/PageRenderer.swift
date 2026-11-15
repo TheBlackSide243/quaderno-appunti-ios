@@ -15,11 +15,37 @@ enum PageRenderer {
         return (r == 90 || r == 270) ? CGSize(width: b.height, height: b.width) : b
     }
 
+    /// A page on dark paper: its ink and text are shown light. PDF pages and custom papers are
+    /// pictures of their own, so they always count as light.
+    static func isDark(_ nb: Notebook, _ page: PageInfo) -> Bool {
+        nb.paper.isDark && page.pdfIndex == nil && page.backdrop == nil && !nb.isText
+    }
+
+    /// The colour of typed text: on dark paper dark colours turn light, like the ink does.
+    static func textColor(_ hex: String, dark: Bool) -> UIColor {
+        let c = UIColor(hex: hex)
+        guard dark else { return c }
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard c.getHue(&h, saturation: &s, brightness: &b, alpha: &a) else { return c }
+        if s < 0.25 && b < 0.5 { return UIColor(white: 0.93, alpha: 1) }
+        return UIColor(hue: h, saturation: s * 0.75, brightness: max(b, 0.88), alpha: 1)
+    }
+
     /// Paper, ruling and PDF page, in page coordinates (top-left origin), into a UIKit context.
     static func drawBackground(_ nb: Notebook, _ page: PageInfo, in ctx: CGContext) {
         let rect = CGRect(origin: .zero, size: page.size)
         ctx.setFillColor(nb.paper.uiColor.cgColor)
         ctx.fill(rect)
+        if let name = page.backdrop, let img = UIImage(contentsOfFile: Store.image(nb.id, name).path), img.size.width > 0, img.size.height > 0 {
+            // a custom paper fills the page; a picture of another shape is fitted and centred
+            ctx.setFillColor(UIColor.white.cgColor)
+            ctx.fill(rect)
+            let k = min(rect.width / img.size.width, rect.height / img.size.height)
+            let s = CGSize(width: img.size.width * k, height: img.size.height * k)
+            UIGraphicsPushContext(ctx)
+            img.draw(in: CGRect(x: (rect.width - s.width) / 2, y: (rect.height - s.height) / 2, width: s.width, height: s.height))
+            UIGraphicsPopContext()
+        }
         if let i = page.pdfIndex {
             if let doc = PDFCache.shared.document(nb.id), let p = doc.page(at: i), let ref = p.pageRef {
                 ctx.saveGState()
@@ -131,20 +157,20 @@ enum PageRenderer {
         }
     }
 
-    static func textAttributes(_ item: PageItem) -> [NSAttributedString.Key: Any] {
+    static func textAttributes(_ item: PageItem, dark: Bool = false) -> [NSAttributedString.Key: Any] {
         [.font: UIFont.systemFont(ofSize: item.fontSize, weight: item.bold ? .bold : .regular),
-         .foregroundColor: UIColor(hex: item.color)]
+         .foregroundColor: textColor(item.color, dark: dark)]
     }
 
     /// Insets of the text inside a box; the editor's UITextView uses the same so nothing jumps on export.
     static let textInset = UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
 
-    static func drawItems(_ nb: Notebook, _ items: [PageItem]) {
+    static func drawItems(_ nb: Notebook, _ items: [PageItem], dark: Bool = false) {
         for item in items {
             switch item.kind {
             case .text:
                 let r = item.frame.inset(by: textInset)
-                (item.text as NSString).draw(with: r, options: [.usesLineFragmentOrigin], attributes: textAttributes(item), context: nil)
+                (item.text as NSString).draw(with: r, options: [.usesLineFragmentOrigin], attributes: textAttributes(item, dark: dark), context: nil)
             case .image:
                 if let name = item.image, let img = UIImage(contentsOfFile: Store.image(nb.id, name).path) {
                     img.draw(in: item.frame)
@@ -156,10 +182,11 @@ enum PageRenderer {
         }
     }
 
-    /// The ink as an image, always with light-mode colours (PencilKit inverts ink in dark mode).
-    static func inkImage(_ d: PKDrawing, size: CGSize, scale: CGFloat) -> UIImage {
+    /// The ink as an image, with light-mode colours (PencilKit inverts ink in dark mode), or with
+    /// the dark-mode ones for a page on dark paper.
+    static func inkImage(_ d: PKDrawing, size: CGSize, scale: CGFloat, dark: Bool = false) -> UIImage {
         var img = UIImage()
-        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+        UITraitCollection(userInterfaceStyle: dark ? .dark : .light).performAsCurrent {
             img = d.image(from: CGRect(origin: .zero, size: size), scale: scale)
         }
         return img
@@ -176,11 +203,13 @@ enum PageRenderer {
         }
         let drawing = Store.loadInk(nb.id, page)
         let items = Store.loadItems(nb.id, page.id)
+        let dark = isDark(nb, page)
         return UIGraphicsImageRenderer(size: page.size, format: fmt).image { r in
             drawBackground(nb, page, in: r.cgContext)
-            drawItems(nb, items)
+            drawItems(nb, items, dark: dark)
             if !drawing.strokes.isEmpty {
-                inkImage(drawing, size: page.size, scale: k).draw(in: CGRect(origin: .zero, size: page.size), blendMode: .multiply, alpha: 1)
+                inkImage(drawing, size: page.size, scale: k, dark: dark)
+                    .draw(in: CGRect(origin: .zero, size: page.size), blendMode: dark ? .normal : .multiply, alpha: 1)
             }
         }
     }
@@ -247,11 +276,13 @@ enum PageRenderer {
             for page in list {
                 autoreleasepool {
                     ctx.beginPage(withBounds: CGRect(origin: .zero, size: page.size), pageInfo: [:])
+                    let dark = isDark(nb, page)
                     drawBackground(nb, page, in: ctx.cgContext)
-                    drawItems(nb, Store.loadItems(nb.id, page.id))
+                    drawItems(nb, Store.loadItems(nb.id, page.id), dark: dark)
                     let d = Store.loadInk(nb.id, page)
                     if !d.strokes.isEmpty {
-                        inkImage(d, size: page.size, scale: 3).draw(in: CGRect(origin: .zero, size: page.size), blendMode: .multiply, alpha: 1)
+                        inkImage(d, size: page.size, scale: 3, dark: dark)
+                            .draw(in: CGRect(origin: .zero, size: page.size), blendMode: dark ? .normal : .multiply, alpha: 1)
                     }
                 }
             }

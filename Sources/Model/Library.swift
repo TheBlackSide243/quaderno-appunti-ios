@@ -457,6 +457,13 @@ final class Library {
     func opened(_ id: UUID) { openNotebooks.insert(id) }
     func closed(_ id: UUID) { openNotebooks.remove(id) }
 
+    /// Locks or unlocks a notebook with Face ID. Its pages leave the iPhone's search while locked.
+    func setLocked(_ id: UUID, _ on: Bool) {
+        guard var nb = notebook(id) else { return }
+        nb.locked = on ? true : nil
+        save(nb, touch: false)
+    }
+
     func toggleFavorite(_ id: UUID) {
         guard var nb = notebook(id) else { return }
         nb.favorite.toggle()

@@ -67,7 +67,8 @@ struct SearchView: View {
                 guard !Task.isCancelled else { return }
                 searching = true
                 let list = scope.map { id in library.notebooks.filter { $0.id == id } } ?? library.notebooks
-                let r = await Indexer.shared.search(query, in: list)
+                // inside an open notebook (already unlocked) its own pages are searched too
+                let r = await Indexer.shared.search(query, in: list, includeLocked: scope != nil)
                 guard !Task.isCancelled else { return }
                 // inside a notebook the match on its own title says nothing
                 hits = scope == nil ? r : r.filter { $0.pageIndex != nil }

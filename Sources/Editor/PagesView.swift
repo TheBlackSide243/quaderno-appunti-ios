@@ -142,7 +142,7 @@ struct PageThumb: View {
         }
         .aspectRatio(page.size.width / page.size.height, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 6))
-        .task(id: "\(page.id)-\(version)-\(page.template.rawValue)-\(notebook.paper.rawValue)") {
+        .task(id: "\(page.id)-\(version)-\(page.template.rawValue)-\(notebook.paper.rawValue)-\(page.backdrop ?? "")") {
             let nb = notebook, pg = page
             image = await Task.detached(priority: .userInitiated) { PageRenderer.render(nb, pg, width: 300) }.value
         }

@@ -32,6 +32,9 @@ enum Demo {
         case "assistant": open("Dispensa termodinamica")
         case "textdoc": open("Relazione di laboratorio")
         case "stickers": open("Idee progetto")
+        case "dark": open("Diario serale")
+        case "paper", "papers": open("Riunioni")
+        case "palette": open("Fisica 1")
         case "pdf", "ocr": open("Dispensa termodinamica")
         case "shapes": open("Fisica 1", page: 1)
         case "trash":
@@ -295,8 +298,41 @@ enum Demo {
         library.save(spesa, touch: false)
 
         var riunioni = library.create(title: "Riunioni", cover: 8, style: .marble, template: .cornell, paper: .white, format: .a4Portrait, folder: work)
+        // a custom paper: a weekly planner made as a picture, also kept among the custom papers
+        let planner = plannerPaper()
+        PaperStore.shared.add(planner)
+        PaperStore.shared.add(gridPaper())
+        if let (name, _) = Store.saveImage(planner, riunioni.id) {
+            riunioni.pages[0].backdrop = name
+            riunioni.pages[0].template = .blank
+            var d: [PKStroke] = []
+            for k in 0..<3 { d += writeLine(x0: 70, x1: 260, baseline: 168 + CGFloat(k) * 22, size: 6, color: UIColor(hex: "1D4ED8"), rng: &rng) }
+            for k in 0..<2 { d += writeLine(x0: 320, x1: 520, baseline: 380 + CGFloat(k) * 22, size: 6, color: UIColor(hex: "1C1C20"), rng: &rng) }
+            Store.saveDrawing(PKDrawing(strokes: d), riunioni.id, riunioni.pages[0].id)
+        }
         riunioni.modified = Date().addingTimeInterval(-30 * hour)
         library.save(riunioni, touch: false)
+
+        // Evening diary on dark paper: black ink shows white, with the new kinds of ink.
+        var sera = library.create(title: "Diario serale", cover: 8, style: .stars, template: .lined, paper: .night, format: .a4Portrait, folder: nil)
+        do {
+            let p = sera.pages[0]
+            var d: [PKStroke] = []
+            for k in 0..<5 { d += writeLine(x0: 78, x1: k == 4 ? 360 : 540, baseline: 156 + CGFloat(k) * 24, size: 7, color: UIColor(hex: "1C1C20"), rng: &rng) }
+            // fountain pen, crayon and watercolour samples
+            func wave(_ y: CGFloat, _ amp: CGFloat) -> [CGPoint] { (0...60).map { i in CGPoint(x: 90 + CGFloat(i) * 7, y: y + amp * sin(CGFloat(i) / 5)) } }
+            d.append(styled(wave(360, 8), color: UIColor(hex: "1D4ED8"), width: 3, ink: .fountainPen))
+            d.append(styled(wave(420, 6), color: UIColor(hex: "DC2626"), width: 9, ink: .crayon))
+            d.append(styled(wave(490, 10), color: UIColor(hex: "15803D"), width: 18, ink: .watercolor))
+            for k in 0..<4 { d += writeLine(x0: 78, x1: 540, baseline: 580 + CGFloat(k) * 24, size: 7, color: UIColor(hex: "1C1C20"), rng: &rng) }
+            Store.saveDrawing(PKDrawing(strokes: d), sera.id, p.id)
+            Store.saveItems([
+                text("12 novembre", x: 74, y: 82, w: 300, size: 24, color: "1C1C20", bold: true),
+                text("stilografica · pastello · acquerello", x: 340, y: 520, w: 220, size: 13, color: "7C3AED"),
+            ], sera.id, p.id)
+        }
+        sera.modified = Date().addingTimeInterval(-0.2 * hour)
+        library.save(sera, touch: false)
 
         var diario = library.create(title: "Diario", cover: nil, style: .plain, template: .narrow, paper: .ivory, format: .a4Portrait, folder: nil)
         do {
@@ -307,6 +343,8 @@ enum Demo {
             Store.saveItems([text("5 novembre", x: 36, y: 20, w: 300, size: 22, color: "1D4ED8", bold: true)], diario.id, p.id)
         }
         diario.modified = Date().addingTimeInterval(-120 * hour)
+        // a personal diary, locked with Face ID: the shelf does not show its first page
+        diario.locked = true
         library.save(diario, touch: false)
 
         // A PDF handout, highlighted and annotated.
@@ -373,6 +411,66 @@ enum Demo {
                           opacity: 1, force: 1, azimuth: 0, altitude: .pi / 3)
         }
         return PKStroke(ink: PKInk(type, color: color), path: PKStrokePath(controlPoints: sp, creationDate: Date()))
+    }
+
+    /// A stroke with one of the inks of the pen and the pencil, as they come out of the Pencil.
+    static func styled(_ pts: [CGPoint], color: UIColor, width: CGFloat, ink: PKInk.InkType) -> PKStroke {
+        let sp = pts.enumerated().map { i, p in
+            PKStrokePoint(location: p, timeOffset: TimeInterval(i) * 0.02, size: CGSize(width: width, height: width),
+                          opacity: 1, force: 1 + 0.4 * sin(CGFloat(i) / 4), azimuth: 0.6, altitude: .pi / 3)
+        }
+        return PKStroke(ink: PKInk(ink, color: color), path: PKStrokePath(controlPoints: sp, creationDate: Date()))
+    }
+
+    /// A weekly planner drawn as a picture, to show a custom paper.
+    static func plannerPaper() -> UIImage {
+        let size = CGSize(width: 1190, height: 1684)
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: fmt).image { r in
+            let c = r.cgContext
+            UIColor(red: 0.99, green: 0.98, blue: 0.95, alpha: 1).setFill()
+            c.fill(CGRect(origin: .zero, size: size))
+            UIColor(red: 0.16, green: 0.33, blue: 0.55, alpha: 1).setFill()
+            c.fill(CGRect(x: 0, y: 0, width: size.width, height: 150))
+            let head: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 58, weight: .heavy), .foregroundColor: UIColor.white]
+            ("SETTIMANA" as NSString).draw(at: CGPoint(x: 80, y: 42), withAttributes: head)
+            let days = ["LUNEDÌ", "MARTEDÌ", "MERCOLEDÌ", "GIOVEDÌ", "VENERDÌ", "SABATO"]
+            let day: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 30, weight: .bold), .foregroundColor: UIColor(red: 0.16, green: 0.33, blue: 0.55, alpha: 1)]
+            let boxW = (size.width - 160 - 40) / 2, boxH: CGFloat = 450
+            for (i, d) in days.enumerated() {
+                let x = 80 + CGFloat(i % 2) * (boxW + 40), y = 210 + CGFloat(i / 2) * (boxH + 30)
+                let box = CGRect(x: x, y: y, width: boxW, height: boxH)
+                c.setStrokeColor(UIColor(red: 0.16, green: 0.33, blue: 0.55, alpha: 0.6).cgColor)
+                c.setLineWidth(3)
+                c.stroke(box)
+                (d as NSString).draw(at: CGPoint(x: x + 22, y: y + 18), withAttributes: day)
+                c.setStrokeColor(UIColor(white: 0.8, alpha: 1).cgColor)
+                c.setLineWidth(1.5)
+                var ly = y + 110
+                while ly < y + boxH - 20 { c.move(to: CGPoint(x: x + 20, y: ly)); c.addLine(to: CGPoint(x: x + boxW - 20, y: ly)); ly += 54 }
+                c.strokePath()
+            }
+        }
+    }
+
+    /// Engineering paper with a green grid, the second demo custom paper.
+    static func gridPaper() -> UIImage {
+        let size = CGSize(width: 1190, height: 1684)
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: fmt).image { r in
+            let c = r.cgContext
+            UIColor(red: 0.95, green: 0.98, blue: 0.94, alpha: 1).setFill()
+            c.fill(CGRect(origin: .zero, size: size))
+            c.setStrokeColor(UIColor(red: 0.3, green: 0.6, blue: 0.35, alpha: 0.35).cgColor)
+            c.setLineWidth(1)
+            var x: CGFloat = 0
+            while x < size.width { c.move(to: CGPoint(x: x, y: 0)); c.addLine(to: CGPoint(x: x, y: size.height)); x += 30 }
+            var y: CGFloat = 0
+            while y < size.height { c.move(to: CGPoint(x: 0, y: y)); c.addLine(to: CGPoint(x: size.width, y: y)); y += 30 }
+            c.strokePath()
+        }
     }
 
     /// A line of cursive-looking scribble: words of looped letters, slanted, with some tall letters.

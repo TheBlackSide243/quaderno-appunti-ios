@@ -267,7 +267,7 @@ final class Indexer: @unchecked Sendable {
     // MARK: Search
 
     /// Looks for `query` in titles, handwriting, typed text and PDF text. Accents and case are ignored.
-    func search(_ query: String, in notebooks: [Notebook]) async -> [SearchHit] {
+    func search(_ query: String, in notebooks: [Notebook], includeLocked: Bool = false) async -> [SearchHit] {
         let q = Self.fold(query.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !q.isEmpty else { return [] }
         return await withCheckedContinuation { cont in
@@ -277,6 +277,8 @@ final class Indexer: @unchecked Sendable {
                     if Self.fold(nb.title).contains(q) {
                         hits.append(SearchHit(notebookID: nb.id, pageIndex: nil, snippet: nb.title))
                     }
+                    // the pages of a locked notebook are not shown in the results
+                    if nb.isLocked && !includeLocked { continue }
                     let i = self.index(nb.id)
                     for (n, page) in nb.pages.enumerated() {
                         guard let text = i[page.id.uuidString]?.all, !text.isEmpty else { continue }

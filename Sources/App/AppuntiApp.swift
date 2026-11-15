@@ -24,6 +24,7 @@ struct AppuntiApp: App {
                 .environment(backup)
                 .tint(Theme.accent)
                 .preferredColorScheme(.dark)
+                .appLockCover()
         }
         // iPad: a notebook in a window of its own, to keep two side by side
         WindowGroup(id: "notebook", for: UUID.self) { $id in
@@ -32,6 +33,7 @@ struct AppuntiApp: App {
                 .environment(backup)
                 .tint(Theme.accent)
                 .preferredColorScheme(.dark)
+                .appLockCover()
         }
     }
 }
@@ -44,10 +46,12 @@ struct NotebookWindow: View {
 
     var body: some View {
         if let id, let nb = library.notebook(id) {
-            if nb.isText {
-                TextDocView(library: library, notebook: nb, onClose: { dismissWindow() })
-            } else {
-                EditorView(library: library, notebook: nb, page: nil, onClose: { dismissWindow() })
+            LockedNotebookGate(notebook: nb, onClose: { dismissWindow() }) {
+                if nb.isText {
+                    TextDocView(library: library, notebook: nb, onClose: { dismissWindow() })
+                } else {
+                    EditorView(library: library, notebook: nb, page: nil, onClose: { dismissWindow() })
+                }
             }
         } else {
             ContentUnavailableView("Quaderno non trovato", systemImage: "book.closed",

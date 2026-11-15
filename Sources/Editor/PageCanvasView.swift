@@ -335,6 +335,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         fittedWidth = 0
         setNeedsLayout()
         layoutIfNeeded()
+        applyPaperStyle()
         renderPaper()
         renderLayers(force: true)
         stamps = currentStamps()
@@ -354,11 +355,12 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
             load(nb, pg)
             return
         }
-        let paperChanged = page?.template != pg.template || page?.size != pg.size || notebook?.paper != nb.paper
+        let paperChanged = page?.template != pg.template || page?.size != pg.size || notebook?.paper != nb.paper || page?.backdrop != pg.backdrop
         notebook = nb
         page = pg
         if paperChanged {
             paperScale = 0
+            applyPaperStyle()
             renderPaper()
         }
         guard !dirty else { return }
@@ -395,7 +397,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         layerScale = want
         func picture(_ ls: ArraySlice<InkLayer>) -> UIImage? {
             let strokes = ls.filter { !$0.isHidden }.flatMap { Store.loadDrawing(nb.id, $0.id).strokes }
-            return strokes.isEmpty ? nil : PageRenderer.inkImage(PKDrawing(strokes: strokes), size: pg.size, scale: want)
+            return strokes.isEmpty ? nil : PageRenderer.inkImage(PKDrawing(strokes: strokes), size: pg.size, scale: want, dark: darkPaper)
         }
         belowInk.image = picture(list[..<i])
         aboveInk.image = picture(list[(i + 1)...])
@@ -428,7 +430,9 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         notebook = nb
         page = pg
         paperScale = 0
+        applyPaperStyle()
         renderPaper()
+        renderLayers(force: true)
     }
 
     private func renderPaper() {
@@ -515,11 +519,27 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     }
 
     /// Ink is laid on the paper like on real paper: multiplied, so a highlighter tints the white
-    /// but the black text of a PDF stays black under it instead of being covered.
+    /// but the black text of a PDF stays black under it instead of being covered. On dark paper
+    /// multiplying would hide the ink, so it is laid on as it is.
     private func multiplyInk() {
-        for v in canvas.subviews where v !== paper && v !== items && v !== links && v.layer.compositingFilter == nil {
-            v.layer.compositingFilter = "multiplyBlendMode"
+        let filter: String? = darkPaper ? nil : "multiplyBlendMode"
+        for v in canvas.subviews where v !== paper && v !== items && v !== links {
+            if (v.layer.compositingFilter as? String) != filter { v.layer.compositingFilter = filter }
         }
+    }
+
+    /// The page is on dark paper: PencilKit shows the ink in its dark-mode colours.
+    private var darkPaper: Bool {
+        guard let nb = notebook, let pg = page else { return false }
+        return PageRenderer.isDark(nb, pg)
+    }
+
+    private func applyPaperStyle() {
+        let dark = darkPaper
+        let style: UIUserInterfaceStyle = dark ? .dark : .light
+        if canvas.overrideUserInterfaceStyle != style { canvas.overrideUserInterfaceStyle = style }
+        items.dark = dark
+        multiplyInk()
     }
 
     private func updateContent() {
@@ -653,6 +673,30 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
         guard UIPencilInteraction.preferredTapAction != .ignore else { return }
         onPencilTap?()
+    }
+
+    /// What a squeeze of the Apple Pencil Pro asks for, as set in the iPad's settings.
+    enum Squeeze {
+        case palette(CGPoint)
+        case eraser
+        case previous
+    }
+
+    /// Called when the Apple Pencil Pro is squeezed.
+    var onSqueeze: ((Squeeze) -> Void)?
+
+    @available(iOS 17.5, *)
+    func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
+        guard squeeze.phase == .ended else { return }
+        switch UIPencilInteraction.preferredSqueezeAction {
+        case .ignore: return
+        case .switchEraser: onSqueeze?(.eraser)
+        case .switchPrevious: onSqueeze?(.previous)
+        default:
+            // the palette opens next to the tip of the Pencil, or in the middle when it is too far
+            let p = squeeze.hoverPose?.location ?? CGPoint(x: bounds.midX, y: bounds.midY)
+            onSqueeze?(.palette(p))
+        }
     }
 
     // MARK: Shapes

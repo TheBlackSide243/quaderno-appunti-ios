@@ -25,6 +25,14 @@ final class ItemsLayer: UIView {
         return v === self ? nil : v
     }
 
+    /// The page is on dark paper: typed text is shown light.
+    var dark = false {
+        didSet {
+            guard dark != oldValue else { return }
+            views.values.forEach { $0.dark = dark }
+        }
+    }
+
     func load(_ nb: Notebook, _ list: [PageItem]) {
         notebook = nb
         views.values.forEach { $0.removeFromSuperview() }
@@ -38,6 +46,7 @@ final class ItemsLayer: UIView {
     private func addView(_ item: PageItem) {
         guard let nb = notebook else { return }
         let v = ItemView(item: item, notebook: nb)
+        v.dark = dark
         v.onTap = { [weak self] id in self?.tapped(id) }
         v.onChange = { [weak self] item in self?.changed(item) }
         v.onEndEditing = { [weak self] item in
@@ -161,6 +170,10 @@ final class ItemView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     var onTap: ((UUID) -> Void)?
     var onChange: ((PageItem) -> Void)?
     var onEndEditing: ((PageItem) -> Void)?
+    /// On dark paper typed text is shown light.
+    var dark = false {
+        didSet { if dark != oldValue, let tv = textView { tv.textColor = PageRenderer.textColor(item.color, dark: dark) } }
+    }
 
     var selected = false {
         didSet {
@@ -259,7 +272,7 @@ final class ItemView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         }
         if let tv = textView {
             tv.font = UIFont.systemFont(ofSize: item.fontSize, weight: item.bold ? .bold : .regular)
-            tv.textColor = UIColor(hex: item.color)
+            tv.textColor = PageRenderer.textColor(item.color, dark: dark)
             if tv.text != item.text { tv.text = item.text }
             fitText()
         }
