@@ -343,7 +343,9 @@ struct EditorView: View {
             PageHistory.snapshot(model.notebook, model.page, now: Date().addingTimeInterval(-3 * 3600))
             showHistory = true
         case "timer": FocusTimer.shared.start()
-        case "palette": model.palette = CGPoint(x: model.canvas.bounds.midX - 120, y: model.canvas.bounds.midY)
+        case "palette":
+            model.select(.pen)
+            model.palette = CGPoint(x: model.canvas.bounds.midX - 120, y: model.canvas.bounds.midY)
         default: break
         }
     }
