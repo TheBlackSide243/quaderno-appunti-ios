@@ -99,6 +99,8 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
 - **Quaderni condivisi unificati tratto per tratto**: se due persone scrivono sulla stessa pagina
   restano i tratti e i riquadri di entrambe (prima vinceva l'ultimo salvataggio). **Widget** per la
   schermata Home e la schermata di blocco: quaderno nuovo, ultimo quaderno, ripasso e ricerca a un tocco.
+- **Spessori a scelta** per penna, matita, evidenziatore, gomma e forme: i tre spessori della barra
+  si cambiano toccando di nuovo quello in uso, con un cursore e dodici misure pronte.
 - **Testo e foto** sulla pagina: riquadri di testo (dimensione, grassetto, colore) e immagini,
   da trascinare e ridimensionare; **Incolla** mette sulla pagina il testo o l'immagine copiati.
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in

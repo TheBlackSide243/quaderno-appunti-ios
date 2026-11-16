@@ -34,7 +34,7 @@ enum Demo {
         case "stickers": open("Idee progetto")
         case "dark": open("Diario serale")
         case "paper", "papers": open("Riunioni")
-        case "palette", "zoom", "lasso", "history", "timer": open("Fisica 1")
+        case "palette", "zoom", "lasso", "history", "timer", "widths": open("Fisica 1")
         case "stats":
             // two weeks of reviews, with a gap, so the chart and the streak have something to show
             let cal = Calendar.current

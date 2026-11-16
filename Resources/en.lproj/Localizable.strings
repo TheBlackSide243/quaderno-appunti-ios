@@ -560,3 +560,7 @@
 "Ingrandimento" = "Magnification";
 "Giorno" = "Day";
 "Carte" = "Cards";
+"%@ pt" = "%@ pt";
+"Spessore" = "Thickness";
+"Ripristina gli spessori" = "Reset the sizes";
+"Tocca di nuovo per scegliere un altro spessore" = "Tap again to choose another size";
