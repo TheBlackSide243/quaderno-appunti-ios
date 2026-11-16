@@ -10,6 +10,7 @@ struct ToolStrip: View {
     let onAssistant: () -> Void
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
                 ForEach(Tool.allCases) { t in
@@ -72,8 +73,9 @@ struct ToolStrip: View {
                     // these buttons once more after the tool changed (to the lasso, which has no
                     // widths), and reading model.tool.widths[i] inside them then crashed the app.
                     let tool = model.tool
-                    ForEach(Array(tool.widths.enumerated()), id: \.offset) { i, w in
+                    ForEach(Array(model.widths(of: tool).enumerated()), id: \.offset) { i, w in
                         widthButton(tool, i, w)
+                            .id(WidthSlot(tool: tool, index: i))
                     }
                     .id(tool)
                 }
@@ -91,6 +93,12 @@ struct ToolStrip: View {
                 }
             }
             .padding(.horizontal, 10)
+        }
+        // the size being changed is brought into view first (on the iPhone the sizes are often
+        // past the right edge), so its panel opens under it
+        .onChange(of: model.widthPanel) { _, slot in
+            if let slot { proxy.scrollTo(slot, anchor: nil) }
+        }
         }
         .frame(height: 52)
         // a scroll view draws its content into the safe area too: on the iPhone Duo the tools ran
@@ -119,23 +127,42 @@ struct ToolStrip: View {
     private func widthButton(_ tool: Tool, _ i: Int, _ w: CGFloat) -> some View {
         let on = model.widthIndex(of: tool) == i
         let eraser = tool == .eraser
-        return Button { model.setWidth(i) } label: {
+        let changeable = tool.canChangeWidth(i)
+        let slot = WidthSlot(tool: tool, index: i)
+        return Button {
+            // the size already in use: a second tap opens the panel to change it
+            if on && changeable { model.widthPanel = slot } else { model.setWidth(i) }
+        } label: {
             Group {
                 if eraser && w == 0 {
                     Image(systemName: "scribble.variable").font(.system(size: 15, weight: .semibold))
                 } else if eraser {
-                    Circle().stroke(Theme.text, lineWidth: 1.5).frame(width: i == 1 ? 10 : 20, height: i == 1 ? 10 : 20)
+                    let d = 6 + sqrt(tool.widthFraction(w)) * 18
+                    Circle().stroke(Theme.text, lineWidth: 1.5).frame(width: d, height: d)
                 } else {
-                    Capsule().fill(Theme.text).frame(width: 24, height: CGFloat(i == 0 ? 2 : (i == 1 ? 4 : 7)))
+                    Capsule().fill(Theme.text).frame(width: 24, height: WidthSlot.barHeight(tool, w))
                 }
             }
             .foregroundStyle(Theme.text)
             .frame(width: 40, height: 36)
             .background(on ? Theme.input : .clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(on ? Theme.line : .clear, lineWidth: 1))
+            .overlay(alignment: .bottomTrailing) {
+                if on && changeable {
+                    Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(Theme.sub)
+                        .padding(3)
+                }
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(eraser ? (w == 0 ? String(localized: "Cancella tratto intero") : (i == 1 ? String(localized: "Gomma piccola") : String(localized: "Gomma grande"))) : String(localized: "Spessore \(i + 1)"))
+        .accessibilityValue(eraser && w == 0 ? "" : WidthSlot.text(w))
+        .accessibilityHint(on && changeable ? String(localized: "Tocca di nuovo per scegliere un altro spessore") : "")
+        .popover(isPresented: Binding(get: { model.widthPanel == slot }, set: { if !$0 { model.widthPanel = nil } })) {
+            WidthEditor(model: model, slot: slot)
+                .presentationCompactAdaptation(.popover)
+        }
     }
 
     private func swatch(_ hex: String) -> some View {
