@@ -10,6 +10,7 @@ struct ToolStrip: View {
     let onAssistant: () -> Void
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
                 ForEach(Tool.allCases) { t in
@@ -74,6 +75,7 @@ struct ToolStrip: View {
                     let tool = model.tool
                     ForEach(Array(model.widths(of: tool).enumerated()), id: \.offset) { i, w in
                         widthButton(tool, i, w)
+                            .id(WidthSlot(tool: tool, index: i))
                     }
                     .id(tool)
                 }
@@ -91,6 +93,12 @@ struct ToolStrip: View {
                 }
             }
             .padding(.horizontal, 10)
+        }
+        // the size being changed is brought into view first (on the iPhone the sizes are often
+        // past the right edge), so its panel opens under it
+        .onChange(of: model.widthPanel) { _, slot in
+            if let slot { proxy.scrollTo(slot, anchor: nil) }
+        }
         }
         .frame(height: 52)
         // a scroll view draws its content into the safe area too: on the iPhone Duo the tools ran

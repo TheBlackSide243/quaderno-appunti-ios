@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// One of the three sizes of a tool.
-struct WidthSlot: Equatable {
+struct WidthSlot: Hashable {
     let tool: Tool
     let index: Int
 

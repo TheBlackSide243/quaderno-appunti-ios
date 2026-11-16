@@ -346,7 +346,8 @@ struct EditorView: View {
         case "widths":
             model.select(.pen)
             model.setWidth(1)
-            model.widthPanel = WidthSlot(tool: .pen, index: 1)
+            // after the bar has scrolled to the sizes, as when they are tapped
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { model.widthPanel = WidthSlot(tool: .pen, index: 1) }
         case "palette":
             model.select(.pen)
             model.palette = CGPoint(x: model.canvas.bounds.midX - 120, y: model.canvas.bounds.midY)
