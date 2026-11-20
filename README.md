@@ -101,6 +101,11 @@ digitali: Apple Pencil o dito, quaderni con copertina, PDF da annotare e ricerca
   schermata Home e la schermata di blocco: quaderno nuovo, ultimo quaderno, ripasso e ricerca a un tocco.
 - **Spessori a scelta** per penna, matita, evidenziatore, gomma e forme: i tre spessori della barra
   si cambiano toccando di nuovo quello in uso, con un cursore e dodici misure pronte.
+- **Copia della libreria** in un solo file (Impostazioni → Copia della libreria), da tenere in File o su
+  un computer e da cui rimettere i quaderni che mancano; **scorciatoie da tastiera** su iPad (⌘Z, ⌘1–⌘9
+  per gli strumenti, ⌘← ⌘→ per le pagine, ⌘F…); **anteprima della Pencil** sugli iPad che la sentono
+  sopra lo schermo; **velocità di ascolto** delle registrazioni da 0,75× a 2×; **più pagine insieme**
+  nella griglia, da segnare, duplicare, spostare, condividere in PDF o eliminare.
 - **Testo e foto** sulla pagina: riquadri di testo (dimensione, grassetto, colore) e immagini,
   da trascinare e ridimensionare; **Incolla** mette sulla pagina il testo o l'immagine copiati.
 - **Ricerca** nei titoli, nella scrittura a mano (riconosciuta sul dispositivo con Vision, in

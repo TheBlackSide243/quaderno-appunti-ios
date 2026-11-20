@@ -701,7 +701,15 @@ final class EditorModel {
 
     func duplicatePage(_ index: Int) {
         canvas.saveNow()
-        let src = notebook.pages[index]
+        let copy = copyOf(notebook.pages[index])
+        notebook.pages.insert(copy, at: index + 1)
+        library.save(notebook)
+        Indexer.shared.schedule(notebook, page: copy.id)
+        go(to: index + 1)
+    }
+
+    /// A copy of a page with its own files: ink of every layer, boxes and pictures.
+    private func copyOf(_ src: PageInfo) -> PageInfo {
         var copy = src
         copy.id = UUID()
         // every layer gets a new id; the first layer always has the page's id
@@ -723,10 +731,7 @@ final class EditorModel {
             }
         }
         Store.saveItems(items, notebook.id, copy.id)
-        notebook.pages.insert(copy, at: index + 1)
-        library.save(notebook)
-        Indexer.shared.schedule(notebook, page: copy.id)
-        go(to: index + 1)
+        return copy
     }
 
     func deletePage(_ index: Int) {
@@ -754,6 +759,74 @@ final class EditorModel {
         if index == 0 || to == 0 { library.refreshThumb(notebook.id) }
         pageIndex = notebook.pages.firstIndex { $0.id == current } ?? 0
         showPage()
+    }
+
+    // MARK: Several pages at once (page grid)
+
+    /// The chosen pages, in the order of the notebook.
+    func pages(_ ids: Set<UUID>) -> [PageInfo] { notebook.pages.filter { ids.contains($0.id) } }
+
+    /// Bookmarks all the chosen pages, or takes the bookmark off all of them.
+    func setBookmarks(_ ids: Set<UUID>, on: Bool) {
+        for i in notebook.pages.indices where ids.contains(notebook.pages[i].id) {
+            notebook.pages[i].bookmarked = on ? true : nil
+        }
+        library.save(notebook, touch: false)
+    }
+
+    /// Copies of the chosen pages, in their order, after the last of them. Returns the copies' ids.
+    @discardableResult
+    func duplicatePages(_ ids: Set<UUID>) -> [UUID] {
+        let chosen = pages(ids)
+        guard let last = notebook.pages.lastIndex(where: { ids.contains($0.id) }) else { return [] }
+        canvas.saveNow()
+        let copies = chosen.map { copyOf($0) }
+        notebook.pages.insert(contentsOf: copies, at: last + 1)
+        library.save(notebook)
+        for c in copies { Indexer.shared.schedule(notebook, page: c.id) }
+        return copies.map(\.id)
+    }
+
+    /// Deletes the chosen pages; at least one page always stays.
+    func deletePages(_ ids: Set<UUID>) {
+        let gone = pages(ids)
+        guard !gone.isEmpty, gone.count < notebook.pages.count else { return }
+        canvas.saveNow()
+        let current = page.id
+        let firstBefore = notebook.pages.first?.id
+        let oldIndex = pageIndex
+        for pg in gone { Store.removePageFiles(notebook.id, pg) }
+        notebook.pages.removeAll { ids.contains($0.id) }
+        if SharedNotebooks.shared.isShared(notebook.id) { notebook.deletedPages = (notebook.deletedPages ?? []) + gone.map(\.id) }
+        notebook.cards?.removeAll { ids.contains($0.page) }
+        if notebook.cards?.isEmpty == true { notebook.cards = nil }
+        library.save(notebook)
+        Indexer.shared.prune(notebook)
+        if notebook.pages.first?.id != firstBefore { library.refreshThumb(notebook.id) }
+        // the same page stays open; if it was deleted, the one that took its place
+        pageIndex = notebook.pages.firstIndex { $0.id == current } ?? min(oldIndex, notebook.pages.count - 1)
+        showPage()
+    }
+
+    /// Moves the chosen pages, in their order, to the start or the end of the notebook.
+    func movePages(_ ids: Set<UUID>, toStart: Bool) {
+        let chosen = pages(ids)
+        guard !chosen.isEmpty else { return }
+        canvas.saveNow()
+        let current = page.id
+        let firstBefore = notebook.pages.first?.id
+        let rest = notebook.pages.filter { !ids.contains($0.id) }
+        notebook.pages = toStart ? chosen + rest : rest + chosen
+        library.save(notebook)
+        if notebook.pages.first?.id != firstBefore { library.refreshThumb(notebook.id) }
+        pageIndex = notebook.pages.firstIndex { $0.id == current } ?? 0
+        showPage()
+    }
+
+    /// The chosen pages as one PDF.
+    func exportPDF(pages ids: Set<UUID>) throws -> URL {
+        canvas.saveNow()
+        return try PageRenderer.exportPDF(notebook, pages: pages(ids))
     }
 
     func setTemplate(_ t: PageTemplate, for index: Int) {

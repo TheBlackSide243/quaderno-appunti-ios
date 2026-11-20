@@ -17,6 +17,13 @@ final class AudioNotes: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate
     private(set) var current: Recording?
     private(set) var playing = false
     private(set) var position: Double = 0
+    /// How fast recordings play (0.75× to 2×), the same for every notebook.
+    var speed: Float = AudioNotes.savedSpeed {
+        didSet {
+            UserDefaults.standard.set(speed, forKey: "audio.speed")
+            player?.rate = speed
+        }
+    }
     var error: String?
     /// A tap on the writing plays what was said while it was written.
     var listening = false {
@@ -110,6 +117,8 @@ final class AudioNotes: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate
         do {
             let p = try AVAudioPlayer(contentsOf: Store.audio(notebookID, rec.id))
             p.delegate = self
+            p.enableRate = true
+            p.rate = speed
             p.prepareToPlay()
             player = p
             current = rec
@@ -127,6 +136,7 @@ final class AudioNotes: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
         try? AVAudioSession.sharedInstance().setActive(true)
         p.currentTime = min(max(0, time), max(0, p.duration - 0.1))
+        p.rate = speed
         p.play()
         playing = true
         position = p.currentTime
@@ -204,6 +214,19 @@ final class AudioNotes: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate
         timer = nil
     }
 
+    static let speeds: [Float] = [0.75, 1, 1.25, 1.5, 1.75, 2]
+
+    /// The speed chosen last time, if it is one of those offered.
+    static var savedSpeed: Float {
+        let s = UserDefaults.standard.float(forKey: "audio.speed")
+        return speeds.contains(s) ? s : 1
+    }
+
+    /// "1×", "1,5×" (with the decimal comma where it is used).
+    static func speedLabel(_ s: Float) -> String {
+        Double(s).formatted(.number.precision(.fractionLength(0...2))) + "×"
+    }
+
     static func clock(_ t: Double) -> String {
         let s = Int(max(0, t).rounded(.down))
         return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String(format: "%d:%02d", s / 60, s % 60)
@@ -252,6 +275,25 @@ struct AudioBar: View {
         }
     }
 
+    /// How fast to listen: a lesson goes well at 1.5×, a dictation at 0.75×.
+    private var speedMenu: some View {
+        Menu {
+            ForEach(AudioNotes.speeds, id: \.self) { s in
+                Button { audio.speed = s } label: {
+                    if s == audio.speed { Label(AudioNotes.speedLabel(s), systemImage: "checkmark") } else { Text(AudioNotes.speedLabel(s)) }
+                }
+            }
+        } label: {
+            Text(AudioNotes.speedLabel(audio.speed))
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(audio.speed == 1 ? Theme.text : Theme.bg)
+                .padding(.horizontal, 6)
+                .frame(minWidth: 34, minHeight: 26)
+                .background(audio.speed == 1 ? Theme.input : Theme.accent, in: RoundedRectangle(cornerRadius: 7))
+        }
+        .accessibilityLabel(String(localized: "Velocità di ascolto: \(AudioNotes.speedLabel(audio.speed))"))
+    }
+
     private var playerRow: some View {
         HStack(spacing: 10) {
             Button { if model.replaying { model.stopReplay() }; audio.startRecording() } label: {
@@ -270,6 +312,7 @@ struct AudioBar: View {
                 Text("\(AudioNotes.clock(audio.position)) / \(AudioNotes.clock(audio.duration))")
                     .font(.caption.monospacedDigit()).foregroundStyle(Theme.sub)
                     .fixedSize()
+                speedMenu
                 Button { model.toggleReplay() } label: {
                     Image(systemName: "play.rectangle").font(.body.weight(model.replaying ? .bold : .regular))
                         .foregroundStyle(model.replaying ? Theme.bg : Theme.text)

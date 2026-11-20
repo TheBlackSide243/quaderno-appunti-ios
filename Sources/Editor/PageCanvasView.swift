@@ -123,6 +123,10 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     private var snapOutline: [CGPoint]?
     private var pendingSnap: [CGPoint]?
 
+    /// Under a hovering Apple Pencil: what the tip is about to leave.
+    private let hoverMark = HoverPreview()
+    private let hoverGesture = UIHoverGestureRecognizer()
+
     /// While presenting: the whole page fits the screen.
     var fitWhole = false {
         didSet {
@@ -261,6 +265,10 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         pullHint.alpha = 0
         pullHint.isUserInteractionEnabled = false
         addSubview(pullHint)
+
+        addSubview(hoverMark)
+        hoverGesture.addTarget(self, action: #selector(hovered))
+        addGestureRecognizer(hoverGesture)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -932,6 +940,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     override func layoutSubviews() {
         super.layoutSubviews()
         canvas.frame = bounds
+        hoverMark.frame = bounds
         // While the iPhone Duo folds or a window resizes the view can be momentarily very narrow:
         // a zoom of zero or less would put NaN in the layer positions and end the app.
         guard let pg = page, bounds.width > 40, bounds.height > 40, pg.size.width > 0, pg.size.height > 0 else { return }
@@ -1097,6 +1106,25 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
 
     /// The pen, marker, eraser or lasso chosen in the toolbar.
     func setTool(_ tool: PKTool) { canvas.tool = tool }
+
+    @objc private func hovered(_ g: UIHoverGestureRecognizer) {
+        switch g.state {
+        case .began, .changed:
+            // a trackpad pointer hovers at height zero: only the Pencil gets the mark
+            guard g.zOffset > 0, HoverPreview.wanted, let look = hoverLook else { hoverMark.hide(); return }
+            hoverMark.show(look, at: g.location(in: self))
+        default:
+            hoverMark.hide()
+        }
+    }
+
+    /// What the tip would leave with the tool in use; nil when it would leave nothing.
+    private var hoverLook: HoverPreview.Look? {
+        let free = drawMode && !listenMode && pick == nil && replayFull == nil
+        guard free, !laser, !lassoMode else { return nil }
+        if let s = shape { return HoverPreview.look(shapeWidth: s.width, color: s.color, zoom: canvas.zoomScale) }
+        return HoverPreview.look(for: canvas.tool, zoom: canvas.zoomScale, darkPaper: darkPaper)
+    }
 
     /// With false, only the Apple Pencil draws and fingers scroll the page.
     var fingerDraws: Bool {
@@ -1517,6 +1545,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         let screen = g.location(in: self)
         switch g.state {
         case .began:
+            hoverMark.hide()
             inkPoints = [p]
             snapOutline = nil
             pendingSnap = nil

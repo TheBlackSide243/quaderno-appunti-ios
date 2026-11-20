@@ -76,6 +76,9 @@ struct EditorView: View {
 
     private var main: some View {
         dialogs
+            .background {
+                EditorShortcuts(model: model, onSearch: { showSearch = true }, onPages: { showPages = true }, onClose: { leave() })
+            }
             .onChange(of: phase) { _, p in
                 if p != .active { model.canvas.saveNow() }
                 if p == .background { backup.backupIfAuto(model.library, open: model.notebook.id) }
