@@ -324,7 +324,7 @@ struct EditorView: View {
         guard let screen = Demo.screen else { return }
         try? await Task.sleep(for: .seconds(1.5))
         switch screen {
-        case "pages": showPages = true
+        case "pages", "select": showPages = true
         case "ocr": showText = true
         case "shapes": Demo.drawShapes(model)
         case "study":

@@ -7,7 +7,7 @@ struct PagesView: View {
     let model: EditorModel
     @State private var confirmDelete: Int?
     @State private var bookmarksOnly = false
-    @State private var selecting = false
+    @State private var selecting = Demo.screen == "select"
     @State private var chosen: Set<UUID> = []
     @State private var confirmDeleteChosen = false
     @State private var share: ShareFile?
@@ -86,6 +86,9 @@ struct PagesView: View {
             }
         }
         .sheet(item: $share) { f in ShareSheet(items: [f.url]).ignoresSafeArea() }
+        .onAppear {
+            if Demo.screen == "select" { chosen = Set(model.notebook.pages.prefix(2).map(\.id)) }
+        }
         .preferredColorScheme(.dark)
     }
 
