@@ -564,3 +564,47 @@
 "Spessore" = "Thickness";
 "Ripristina gli spessori" = "Reset the sizes";
 "Tocca di nuovo per scegliere un altro spessore" = "Tap again to choose another size";
+
+/* 1.5.0: copy of the library */
+"Un file è troppo grande per la copia (più di 4 GB)." = "A file is too large for the copy (more than 4 GB).";
+"Il file non è un archivio zip leggibile." = "The file is not a readable zip archive.";
+"Nell'archivio il file «%@» è rovinato." = "In the archive the file “%@” is damaged.";
+"Il file non è una copia di Quaderno Appunti." = "The file is not a copy of Quaderno Appunti.";
+"Non ci sono quaderni da copiare." = "There are no notebooks to copy.";
+"Copia pronta (%@): salvala in File o su un computer." = "Copy ready (%@): save it in Files or on a computer.";
+"Copia non riuscita: %@" = "The copy failed: %@";
+"Ripristino non riuscito: %@" = "Restoring failed: %@";
+"Non manca nessun quaderno: quelli della copia ci sono già tutti." = "No notebook is missing: all those in the copy are already here.";
+"Nella copia non ci sono quaderni." = "There are no notebooks in the copy.";
+"Quaderni ripristinati: %lld." = "Notebooks restored: %lld.";
+"Già presenti, lasciati come sono: %lld." = "Already here, left as they are: %lld.";
+"Copia della libreria" = "Copy of the library";
+"Un solo file con tutti i quaderni, le cartelle, gli adesivi, le carte e le statistiche di studio. Tienilo in File, su iCloud Drive o su un computer: se cambi telefono o reinstalli l'app, da qui rimetti tutto com'era." = "One file with all the notebooks, folders, stickers, papers and study stats. Keep it in Files, on iCloud Drive or on a computer: if you change phone or reinstall the app, from here you put everything back as it was.";
+"Preparo la copia…" = "Making the copy…";
+"Crea una copia" = "Make a copy";
+"Ripristina da una copia…" = "Restore from a copy…";
+"Il ripristino non sostituisce niente: i quaderni che hai già restano come sono e tornano solo quelli che mancano." = "Restoring replaces nothing: the notebooks you already have stay as they are and only the missing ones come back.";
+"I quaderni che hai già restano come sono; tornano solo quelli che mancano." = "The notebooks you already have stay as they are; only the missing ones come back.";
+"Ripristinare i quaderni da questo archivio?" = "Restore the notebooks from this archive?";
+"Ripristinare la copia del %@ con %lld quaderni?" = "Restore the copy of %1$@ with %2$lld notebooks?";
+
+/* 1.5.0: playback speed */
+"Velocità di ascolto: %@" = "Playback speed: %@";
+
+/* 1.5.0: keyboard shortcuts */
+"Annulla l'ultima modifica" = "Undo";
+"Segnalibro" = "Bookmark";
+"Fine presentazione" = "End presentation";
+"Chiudi il quaderno" = "Close the notebook";
+
+/* 1.5.0: several pages at once */
+"Pagine scelte: %lld" = "Pages chosen: %lld";
+"Seleziona" = "Select";
+"Eliminare %lld pagine? Non si può annullare." = "Delete %lld pages? This can't be undone.";
+"Elimina le pagine" = "Delete the pages";
+"Nessuna" = "None";
+"Tutte" = "All";
+"Sposta all'inizio" = "Move to the start";
+"Sposta alla fine" = "Move to the end";
+"Sposta" = "Move";
+"Condividi in PDF" = "Share as PDF";

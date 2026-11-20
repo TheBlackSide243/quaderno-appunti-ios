@@ -76,6 +76,9 @@ struct EditorView: View {
 
     private var main: some View {
         dialogs
+            .background {
+                EditorShortcuts(model: model, onSearch: { showSearch = true }, onPages: { showPages = true }, onClose: { leave() })
+            }
             .onChange(of: phase) { _, p in
                 if p != .active { model.canvas.saveNow() }
                 if p == .background { backup.backupIfAuto(model.library, open: model.notebook.id) }
@@ -321,7 +324,7 @@ struct EditorView: View {
         guard let screen = Demo.screen else { return }
         try? await Task.sleep(for: .seconds(1.5))
         switch screen {
-        case "pages": showPages = true
+        case "pages", "select": showPages = true
         case "ocr": showText = true
         case "shapes": Demo.drawShapes(model)
         case "study":

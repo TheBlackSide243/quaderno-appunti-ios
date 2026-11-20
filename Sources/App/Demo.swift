@@ -23,7 +23,7 @@ enum Demo {
             if let nb = library.notebooks.first(where: { $0.title == title }) { router.open = OpenRequest(notebookID: nb.id, page: page) }
         }
         switch s {
-        case "editor", "pages", "present": open("Fisica 1")
+        case "editor", "pages", "select", "present": open("Fisica 1")
         case "tape", "study": open("Storia moderna")
         case "board": open("Brainstorming")
         case "planner":

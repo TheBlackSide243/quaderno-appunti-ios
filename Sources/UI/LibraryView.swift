@@ -43,6 +43,7 @@ struct LibraryView: View {
             }
         }
         .environment(router)
+        .background { LibraryShortcuts(router: router) }
         .fullScreenCover(item: $router.open) { req in
             if let nb = library.notebook(req.notebookID) {
                 LockedNotebookGate(notebook: nb, onClose: { router.open = nil }) {
