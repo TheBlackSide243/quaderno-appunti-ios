@@ -22,6 +22,11 @@ final class StudyLog {
         if let d = try? Data(contentsOf: Self.file), let v = try? JSONDecoder().decode([String: Day].self, from: d) { days = v }
     }
 
+    /// Reads the file again (after a copy of the library was put back).
+    func reload() {
+        if let d = try? Data(contentsOf: Self.file), let v = try? JSONDecoder().decode([String: Day].self, from: d) { days = v }
+    }
+
     nonisolated static func key(_ d: Date) -> String {
         let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)

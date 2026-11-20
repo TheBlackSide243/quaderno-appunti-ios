@@ -26,6 +26,13 @@ final class StickerStore {
         }
     }
 
+    /// Reads the list again (after a copy of the library was put back).
+    func reload() {
+        if let d = try? Data(contentsOf: Self.listFile), let list = try? Store.decoder.decode([Sticker].self, from: d) {
+            saved = list.filter { FileManager.default.fileExists(atPath: Self.dir.appendingPathComponent($0.file).path) }
+        }
+    }
+
     func image(_ s: Sticker) -> UIImage? { UIImage(contentsOfFile: Self.dir.appendingPathComponent(s.file).path) }
 
     func add(_ img: UIImage) {

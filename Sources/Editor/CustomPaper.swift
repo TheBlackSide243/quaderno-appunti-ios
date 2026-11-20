@@ -27,6 +27,13 @@ final class PaperStore {
         }
     }
 
+    /// Reads the list again (after a copy of the library was put back).
+    func reload() {
+        if let d = try? Data(contentsOf: Self.listFile), let list = try? Store.decoder.decode([Item].self, from: d) {
+            items = list.filter { FileManager.default.fileExists(atPath: Self.dir.appendingPathComponent($0.file).path) }
+        }
+    }
+
     func image(_ p: Item) -> UIImage? { UIImage(contentsOfFile: Self.dir.appendingPathComponent(p.file).path) }
 
     /// Keeps a picture as a paper, at most 2400 pixels on its longer side.

@@ -57,6 +57,7 @@ struct SettingsView: View {
                         }
                         ErrorBanner(error: $backup.error)
                     }
+                    BackupPanel()
                     Panel("Blocco") {
                         Toggle(String(localized: "Blocca l'app con \(AppLock.methodName)"), isOn: Binding(
                             get: { lock.appLockOn },

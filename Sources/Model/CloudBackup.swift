@@ -230,7 +230,7 @@ final class CloudBackup {
         return fm.fileExists(atPath: placeholder.path)
     }
 
-    private nonisolated static func sync(root: URL, local: [Notebook], open: UUID?) -> Result<SyncReport, Error> {
+    nonisolated static func sync(root: URL, local: [Notebook], open: UUID?) -> Result<SyncReport, Error> {
         let ok = root.startAccessingSecurityScopedResource()
         defer { if ok { root.stopAccessingSecurityScopedResource() } }
         let fm = FileManager.default
