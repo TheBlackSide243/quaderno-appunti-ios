@@ -6,6 +6,10 @@ import UniformTypeIdentifiers
 @Observable
 final class LibraryCopy {
     private(set) var working = false
+    /// True while a copy is being put back, false while one is being made.
+    private(set) var restoring = false
+    /// How far the work has got, from 0 to 1.
+    private(set) var progress: Double = 0
     var message: String?
     var error: String?
     /// A copy just made, to save in Files or send.
@@ -13,13 +17,25 @@ final class LibraryCopy {
     /// A copy picked to restore, waiting for the user's yes.
     var pending: (url: URL, manifest: LibraryBackup.Manifest?)?
 
-    func make() {
-        guard !working else { return }
+    /// Tells the screen how far a copy or a restore has got, from the thread doing it.
+    private var meter: LibraryBackup.Progress {
+        { share in Task { @MainActor in self.progress = max(self.progress, share) } }
+    }
+
+    private func start(restoring: Bool) {
         working = true
+        self.restoring = restoring
+        progress = 0
         message = nil
         error = nil
+    }
+
+    func make() {
+        guard !working else { return }
+        start(restoring: false)
+        let report = meter
         Task.detached(priority: .userInitiated) {
-            let result = Result { try LibraryBackup.export() }
+            let result = Result { try LibraryBackup.export(progress: report) }
             await MainActor.run {
                 self.working = false
                 switch result {
@@ -48,13 +64,12 @@ final class LibraryCopy {
 
     func restore(_ url: URL, library: Library) {
         guard !working else { return }
-        working = true
-        message = nil
-        error = nil
+        start(restoring: true)
         let tombs = Tombstones.load()
+        let report = meter
         Task.detached(priority: .userInitiated) {
             let scoped = url.startAccessingSecurityScopedResource()
-            let result = Result { try LibraryBackup.restore(url, tombstones: tombs) }
+            let result = Result { try LibraryBackup.restore(url, tombstones: tombs, progress: report) }
             if scoped { url.stopAccessingSecurityScopedResource() }
             await MainActor.run {
                 self.working = false
@@ -113,7 +128,16 @@ struct BackupPanel: View {
             }
             .buttonStyle(SecondaryButtonStyle())
             .disabled(copy.working)
-            if copy.working { ProgressView().frame(maxWidth: .infinity) }
+            if copy.working {
+                ProgressView(value: copy.progress) {
+                    Text(copy.restoring ? String(localized: "Ripristino i quaderni…") : String(localized: "Preparo la copia…"))
+                        .font(.footnote).foregroundStyle(Theme.sub)
+                } currentValueLabel: {
+                    Text(copy.progress.formatted(.percent.precision(.fractionLength(0))))
+                        .font(.caption.monospacedDigit()).foregroundStyle(Theme.sub)
+                }
+                .tint(Theme.accent)
+            }
             if let m = copy.message {
                 Label(m, systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(Theme.good)
             }

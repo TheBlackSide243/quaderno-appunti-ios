@@ -15,6 +15,8 @@ struct AppuntiApp: App {
         UINavigationBar.appearance().standardAppearance = nav
         UINavigationBar.appearance().scrollEdgeAppearance = nav
         UINavigationBar.appearance().compactAppearance = nav
+        // copies of the library made last time have been saved elsewhere by now
+        Task.detached(priority: .background) { LibraryBackup.removeCopies() }
     }
 
     var body: some Scene {
