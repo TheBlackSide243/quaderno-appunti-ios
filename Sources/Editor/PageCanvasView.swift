@@ -6,31 +6,31 @@ import UIKit
 @MainActor
 final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDelegate, UIPencilInteractionDelegate {
     let canvas = LinkAwareCanvas()
-    private let paper = UIImageView()
+    let paper = UIImageView()
     /// The ink of the other layers, drawn as pictures under and over the layer being edited.
-    private let belowInk = UIImageView()
-    private let aboveInk = UIImageView()
-    private var layerScale: CGFloat = 0
+    let belowInk = UIImageView()
+    let aboveInk = UIImageView()
+    var layerScale: CGFloat = 0
     /// The layer whose ink is on the canvas.
-    private(set) var layerID: UUID?
+    var layerID: UUID?
     /// When the files of the page were last read or written, to notice changes made by others.
-    private var stamps: [Date?] = []
+    var stamps: [Date?] = []
     /// The ink and the boxes as they were last read or saved: what came from disk since then is
     /// put together with what was written here and not saved yet.
-    private var inkBase: [PKStroke] = []
-    private var itemsBase: [PageItem] = []
+    var inkBase: [PKStroke] = []
+    var itemsBase: [PageItem] = []
     let items = ItemsLayer()
     /// The link buttons of the boxes, above everything and usable with any tool.
-    private let links = LinkLayer()
+    let links = LinkLayer()
 
-    private(set) var notebook: Notebook?
-    private(set) var page: PageInfo?
-    private var paperScale: CGFloat = 0
-    private var fittedWidth: CGFloat = 0
-    private var saveTask: Task<Void, Never>?
-    private var dirty = false
+    var notebook: Notebook?
+    var page: PageInfo?
+    var paperScale: CGFloat = 0
+    var fittedWidth: CGFloat = 0
+    var saveTask: Task<Void, Never>?
+    var dirty = false
     /// True while a page is being loaded, so putting its ink on the canvas does not count as an edit.
-    private var loading = false
+    var loading = false
 
     /// Called after the page's ink or boxes were written to disk.
     var onSaved: ((PageInfo) -> Void)?
@@ -68,18 +68,18 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     }
 
     private let shapePan = UIPanGestureRecognizer()
-    private let shapeLayer = CAShapeLayer()
-    private var shapeStart = CGPoint.zero
+    let shapeLayer = CAShapeLayer()
+    var shapeStart = CGPoint.zero
 
     /// The laser pointer: a glowing trail that fades by itself and is never saved.
     var laser = false {
         didSet { applyMode() }
     }
-    private let laserPan = UIPanGestureRecognizer()
-    private let laserGlow = CAShapeLayer()
-    private let laserCore = CAShapeLayer()
-    private var laserPoints: [(p: CGPoint, t: CFTimeInterval, start: Bool)] = []
-    private var laserLink: CADisplayLink?
+    let laserPan = UIPanGestureRecognizer()
+    let laserGlow = CAShapeLayer()
+    let laserCore = CAShapeLayer()
+    var laserPoints: [(p: CGPoint, t: CFTimeInterval, start: Bool)] = []
+    var laserLink: CADisplayLink?
 
     /// Listening to a recording: a tap on the writing plays what was said while it was written.
     var listenMode = false {
@@ -103,28 +103,28 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     /// Called with the area dragged in `.area` mode, in page points.
     var onPick: ((CGRect) -> Void)?
     private let pickPan = UIPanGestureRecognizer()
-    private let pickLayer = CAShapeLayer()
+    let pickLayer = CAShapeLayer()
     /// An area already chosen (the question of a flashcard), shown while choosing the next one.
-    private let markLayer = CAShapeLayer()
-    private var pickStart = CGPoint.zero
+    let markLayer = CAShapeLayer()
+    var pickStart = CGPoint.zero
     private let tapeTap = UITapGestureRecognizer()
 
     /// Words marked by the spelling check, with a red wavy line; a tap on one asks what to do.
-    private let spellLayer = CAShapeLayer()
-    private var spellRects: [CGRect] = []
-    private let spellTap = UITapGestureRecognizer()
+    let spellLayer = CAShapeLayer()
+    var spellRects: [CGRect] = []
+    let spellTap = UITapGestureRecognizer()
     var onSpellTap: ((Int) -> Void)?
 
     /// Draw a shape by hand and keep the pen still at the end: it becomes a clean shape.
     var snapShapes = true
-    private var inkPoints: [CGPoint] = []
-    private var holdAnchor = CGPoint.zero
-    private var holdWork: DispatchWorkItem?
-    private var snapOutline: [CGPoint]?
-    private var pendingSnap: [CGPoint]?
+    var inkPoints: [CGPoint] = []
+    var holdAnchor = CGPoint.zero
+    var holdWork: DispatchWorkItem?
+    var snapOutline: [CGPoint]?
+    var pendingSnap: [CGPoint]?
 
     /// Under a hovering Apple Pencil: what the tip is about to leave.
-    private let hoverMark = HoverPreview()
+    let hoverMark = HoverPreview()
     private let hoverGesture = UIHoverGestureRecognizer()
 
     /// While presenting: the whole page fits the screen.
@@ -278,663 +278,6 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         if window != nil { applyMode() }
     }
 
-    // MARK: Loading and saving
-
-    /// The layer drawn on when a page opens: the top one that is not hidden.
-    static func startLayer(_ pg: PageInfo) -> UUID {
-        (pg.inkLayers.last { !$0.isHidden } ?? pg.inkLayers[pg.inkLayers.count - 1]).id
-    }
-
-    func load(_ nb: Notebook, _ pg: PageInfo, layer: UUID? = nil) {
-        let lid = layer.flatMap { l in pg.inkLayers.contains { $0.id == l } ? l : nil } ?? Self.startLayer(pg)
-        if let page, page.id == pg.id, notebook?.id == nb.id {
-            if lid != layerID {
-                // another layer of the same page: save this one, put the other on the canvas
-                saveNow()
-                notebook = nb
-                self.page = pg
-                layerID = lid
-                loading = true
-                canvas.drawing = Store.loadDrawing(nb.id, lid)
-                loading = false
-                inkBase = canvas.drawing.strokes
-                canvas.undoManager?.removeAllActions()
-                renderLayers(force: true)
-                onUndoChange?()
-                return
-            }
-            notebook = nb
-            self.page = pg
-            if paper.image == nil || paperScale == 0 { renderPaper() }
-            renderLayers(force: true)
-            return
-        }
-        saveNow()
-        if notebook != nil {
-            // a short fade between pages
-            let fade = CATransition()
-            fade.type = .fade
-            fade.duration = 0.16
-            self.layer.add(fade, forKey: "page")
-        }
-        notebook = nb
-        page = pg
-        // stop a bounce still running from the pull that turned the page
-        canvas.setContentOffset(canvas.contentOffset, animated: false)
-        layerID = lid
-        loading = true
-        canvas.drawing = Store.loadDrawing(nb.id, lid)
-        loading = false
-        canvas.undoManager?.removeAllActions()
-        paper.bounds = CGRect(origin: .zero, size: pg.size)
-        belowInk.bounds = CGRect(origin: .zero, size: pg.size)
-        aboveInk.bounds = CGRect(origin: .zero, size: pg.size)
-        layerScale = 0
-        items.bounds = CGRect(origin: .zero, size: pg.size)
-        items.load(nb, Store.loadItems(nb.id, pg.id))
-        inkBase = canvas.drawing.strokes
-        itemsBase = items.items
-        links.bounds = CGRect(origin: .zero, size: pg.size)
-        links.update(items.items, zoom: canvas.zoomScale)
-        clearSelection()
-        selectionHost.bounds = CGRect(origin: .zero, size: pg.size)
-        shapeLayer.path = nil
-        spellLayer.path = nil
-        spellRects = []
-        spellTap.isEnabled = false
-        pickLayer.path = nil
-        markLayer.path = nil
-        snapOutline = nil
-        pendingSnap = nil
-        laserPoints = []
-        laserCore.path = nil
-        laserGlow.path = nil
-        paperScale = 0
-        fittedWidth = 0
-        setNeedsLayout()
-        layoutIfNeeded()
-        applyPaperStyle()
-        renderPaper()
-        renderLayers(force: true)
-        stamps = currentStamps()
-        onUndoChange?()
-    }
-
-    private func currentStamps() -> [Date?] {
-        guard let nb = notebook, let pg = page else { return [] }
-        func mod(_ u: URL) -> Date? { (try? u.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate }
-        return pg.inkLayers.map { mod(Store.drawing(nb.id, $0.id)) } + [mod(Store.items(nb.id, pg.id))]
-    }
-
-    /// A shared notebook got changes: the page is read again if its files changed and nothing
-    /// written here is waiting to be saved.
-    func refreshFromDisk(_ nb: Notebook, _ pg: PageInfo) {
-        guard page?.id == pg.id, let lid = layerID, pg.inkLayers.contains(where: { $0.id == lid }) else {
-            load(nb, pg)
-            return
-        }
-        let paperChanged = page?.template != pg.template || page?.size != pg.size || notebook?.paper != nb.paper || page?.backdrop != pg.backdrop
-        notebook = nb
-        page = pg
-        if paperChanged {
-            paperScale = 0
-            applyPaperStyle()
-            renderPaper()
-        }
-        let now = currentStamps()
-        guard now != stamps else {
-            if !dirty { renderLayers(force: true) }
-            return
-        }
-        let disk = Store.loadDrawing(nb.id, lid)
-        let diskItems = Store.loadItems(nb.id, pg.id)
-        if dirty {
-            // written here and not saved yet: both together, and saved soon
-            let ink = StrokeMerge.merge(base: inkBase, mine: canvas.drawing.strokes, theirs: disk.strokes)
-            let list = StrokeMerge.mergeItems(base: itemsBase, mine: items.items, theirs: diskItems)
-            inkBase = disk.strokes
-            itemsBase = diskItems
-            stamps = now
-            if ink.map(StrokeMerge.key) != canvas.drawing.strokes.map(StrokeMerge.key) {
-                loading = true
-                canvas.drawing = PKDrawing(strokes: ink)
-                loading = false
-                canvas.undoManager?.removeAllActions()
-                onUndoChange?()
-            }
-            if list != items.items {
-                items.load(nb, list)
-                links.update(items.items, zoom: canvas.zoomScale)
-            }
-            renderLayers(force: true)
-            scheduleSave()
-            return
-        }
-        loading = true
-        canvas.drawing = disk
-        loading = false
-        inkBase = disk.strokes
-        itemsBase = diskItems
-        items.load(nb, diskItems)
-        links.update(items.items, zoom: canvas.zoomScale)
-        renderLayers(force: true)
-        stamps = now
-        canvas.undoManager?.removeAllActions()
-        onUndoChange?()
-    }
-
-    /// Draws the other visible layers of the page under and over the one being edited.
-    private func renderLayers(force: Bool) {
-        guard let nb = notebook, let pg = page, let lid = layerID else { return }
-        let list = pg.inkLayers
-        guard list.count > 1, let i = list.firstIndex(where: { $0.id == lid }) else {
-            belowInk.image = nil
-            aboveInk.image = nil
-            return
-        }
-        let screen = window?.screen.scale ?? 2
-        let maxScale = sqrt(16_000_000 / max(1, pg.size.width * pg.size.height))
-        let zoom = canvas.zoomScale.isFinite && canvas.zoomScale > 0 ? canvas.zoomScale : 1
-        let want = min(maxScale, max(1.5, zoom * screen))
-        guard force || want > layerScale * 1.15 else { return }
-        layerScale = want
-        func picture(_ ls: ArraySlice<InkLayer>) -> UIImage? {
-            let strokes = ls.filter { !$0.isHidden }.flatMap { Store.loadDrawing(nb.id, $0.id).strokes }
-            return strokes.isEmpty ? nil : PageRenderer.inkImage(PKDrawing(strokes: strokes), size: pg.size, scale: want, dark: darkPaper)
-        }
-        belowInk.image = picture(list[..<i])
-        aboveInk.image = picture(list[(i + 1)...])
-    }
-
-    // MARK: Lasso selection
-
-    /// The lasso: drawing round strokes and boxes chooses them; then they can be moved, made
-    /// bigger or smaller, turned, recoloured, copied, duplicated or deleted.
-    var lassoMode = false {
-        didSet {
-            guard lassoMode != oldValue else { return }
-            if !lassoMode { clearSelection() }
-            applyMode()
-        }
-    }
-    let selectionHost = SelectionHost()
-    private let lassoPan = UIPanGestureRecognizer()
-    private let lassoTap = UITapGestureRecognizer()
-    private let lassoLayer = CAShapeLayer()
-    private var lassoPoints: [CGPoint] = []
-    /// Indices of the chosen strokes in the canvas's drawing, and the chosen boxes.
-    private var selStrokes: [Int] = []
-    private var selItems: Set<UUID> = []
-    private var selOriginal: PKDrawing?
-    private var selFrame = CGRect.zero
-    /// Called when something gets chosen or nothing is chosen any more.
-    var onSelectionChange: ((Bool) -> Void)?
-    static let inkPasteType = "com.local.appunti.ink"
-
-    var hasSelection: Bool { !selStrokes.isEmpty || !selItems.isEmpty }
-    /// Where the chosen things are, in page points.
-    var selectionRect: CGRect? { hasSelection ? selFrame : nil }
-
-    private func setUpLasso() {
-        selectionHost.layer.anchorPoint = .zero
-        canvas.addSubview(selectionHost)
-        let box = selectionHost.box
-        box.onBegin = { [weak self] in self?.selectionMoveBegan() }
-        box.onEnd = { [weak self] m, s, t in self?.selectionMoveEnded(m, s, t) }
-        lassoLayer.fillColor = UIColor(Theme.accent).withAlphaComponent(0.06).cgColor
-        lassoLayer.strokeColor = UIColor(Theme.accent).cgColor
-        lassoLayer.lineJoin = .round
-        lassoLayer.zPosition = 15
-        items.layer.addSublayer(lassoLayer)
-        lassoPan.addTarget(self, action: #selector(lassoDragged))
-        lassoPan.maximumNumberOfTouches = 1
-        lassoPan.delegate = self
-        lassoPan.isEnabled = false
-        canvas.addGestureRecognizer(lassoPan)
-        lassoTap.addTarget(self, action: #selector(lassoTapped))
-        lassoTap.delegate = self
-        lassoTap.isEnabled = false
-        canvas.addGestureRecognizer(lassoTap)
-    }
-
-    @objc private func lassoDragged(_ g: UIPanGestureRecognizer) {
-        let p = g.location(in: items)
-        switch g.state {
-        case .began:
-            clearSelection()
-            let t = g.translation(in: items)
-            lassoPoints = [CGPoint(x: p.x - t.x, y: p.y - t.y), p]
-            drawLasso()
-        case .changed:
-            lassoPoints.append(p)
-            drawLasso()
-        case .ended:
-            lassoLayer.path = nil
-            selectInside(lassoPoints)
-            lassoPoints = []
-        default:
-            lassoLayer.path = nil
-            lassoPoints = []
-        }
-    }
-
-    private func drawLasso() {
-        let path = CGMutablePath()
-        path.addLines(between: lassoPoints)
-        let z = max(0.05, canvas.zoomScale)
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        lassoLayer.lineWidth = 1.5 / z
-        lassoLayer.lineDashPattern = [NSNumber(value: Double(6 / z)), NSNumber(value: Double(4 / z))]
-        lassoLayer.path = path
-        CATransaction.commit()
-    }
-
-    @objc private func lassoTapped(_ g: UITapGestureRecognizer) {
-        guard hasSelection else { return }
-        let p = g.location(in: selectionHost)
-        if !selectionHost.box.frame.insetBy(dx: -12, dy: -12).contains(p) { clearSelection() }
-    }
-
-    /// Strokes with at least half of their points inside the lasso, and boxes with their centre inside.
-    func selectInside(_ poly: [CGPoint]) {
-        guard poly.count > 2 else { return }
-        let path = CGMutablePath()
-        path.addLines(between: poly)
-        path.closeSubpath()
-        var chosen: [Int] = []
-        for (i, s) in canvas.drawing.strokes.enumerated() {
-            let pts = s.path.map { $0.location.applying(s.transform) }
-            guard !pts.isEmpty else { continue }
-            let step = max(1, pts.count / 24)
-            var inside = 0, total = 0
-            for j in stride(from: 0, to: pts.count, by: step) {
-                total += 1
-                if path.contains(pts[j]) { inside += 1 }
-            }
-            if inside * 2 >= total { chosen.append(i) }
-        }
-        let boxes = items.items.filter { $0.kind != .tape && path.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }.map(\.id)
-        select(strokes: chosen, items: Set(boxes))
-    }
-
-    private func select(strokes: [Int], items ids: Set<UUID>) {
-        selStrokes = strokes
-        selItems = ids
-        guard hasSelection else {
-            clearSelection()
-            return
-        }
-        selFrame = currentSelectionBounds()
-        let box = selectionHost.box
-        box.isHidden = false
-        box.canRotate = !selStrokes.isEmpty && selItems.isEmpty
-        box.reset(to: selFrame.insetBy(dx: -6, dy: -6))
-        canvas.bringSubviewToFront(selectionHost)
-        onSelectionChange?(true)
-    }
-
-    private func currentSelectionBounds() -> CGRect {
-        var r = CGRect.null
-        let all = canvas.drawing.strokes
-        for i in selStrokes where all.indices.contains(i) { r = r.union(all[i].renderBounds) }
-        for it in items.items where selItems.contains(it.id) { r = r.union(it.frame) }
-        return r.isNull ? .zero : r
-    }
-
-    func clearSelection() {
-        if selOriginal != nil { selectionMoveEnded(.zero, 1, 0) }
-        let had = hasSelection
-        selStrokes = []
-        selItems = []
-        selectionHost.box.isHidden = true
-        selectionHost.box.picture.image = nil
-        lassoLayer.path = nil
-        if had { onSelectionChange?(false) }
-    }
-
-    /// A picture of the chosen strokes and boxes, to move around while the finger is down.
-    private func selectionPicture(in r: CGRect) -> UIImage? {
-        guard r.width > 0, r.height > 0, let nb = notebook else { return nil }
-        let strokes = selStrokes.compactMap { canvas.drawing.strokes.indices.contains($0) ? canvas.drawing.strokes[$0] : nil }
-        let scale = min(6, (window?.screen.scale ?? 2) * max(1, canvas.zoomScale))
-        var ink: UIImage?
-        if !strokes.isEmpty {
-            UITraitCollection(userInterfaceStyle: darkPaper ? .dark : .light).performAsCurrent {
-                ink = PKDrawing(strokes: strokes).image(from: r, scale: scale)
-            }
-        }
-        let boxes = items.items.filter { selItems.contains($0.id) }
-        let fmt = UIGraphicsImageRendererFormat()
-        fmt.scale = scale
-        fmt.opaque = false
-        let dark = darkPaper
-        return UIGraphicsImageRenderer(size: r.size, format: fmt).image { ctx in
-            ctx.cgContext.saveGState()
-            ctx.cgContext.translateBy(x: -r.minX, y: -r.minY)
-            PageRenderer.drawItems(nb, boxes, dark: dark)
-            ctx.cgContext.restoreGState()
-            ink?.draw(in: CGRect(origin: .zero, size: r.size))
-        }
-    }
-
-    private func selectionMoveBegan() {
-        guard hasSelection, selOriginal == nil else { return }
-        let original = canvas.drawing
-        selectionHost.box.picture.image = selectionPicture(in: selectionHost.box.frame)
-        selOriginal = original
-        // the chosen strokes leave the page while their picture moves
-        let gone = Set(selStrokes)
-        loading = true
-        canvas.drawing = PKDrawing(strokes: original.strokes.enumerated().filter { !gone.contains($0.offset) }.map(\.element))
-        loading = false
-        items.setHidden(selItems, true)
-    }
-
-    private func selectionMoveEnded(_ move: CGPoint, _ scale: CGFloat, _ turn: CGFloat) {
-        guard let original = selOriginal else { return }
-        selOriginal = nil
-        // the centre the frame had before moving (a view's centre does not follow its transform)
-        let center = selectionHost.box.center
-        let t = SelectionBox.pageTransform(center: center, move: move, scale: scale, turn: turn)
-        loading = true
-        canvas.drawing = original
-        loading = false
-        items.setHidden(selItems, false)
-        if !t.isIdentity {
-            var d = original
-            for i in selStrokes where d.strokes.indices.contains(i) {
-                d.strokes[i].transform = d.strokes[i].transform.concatenating(t)
-            }
-            setDrawingUndoable(d)
-            if !selItems.isEmpty { items.transformItems(selItems, by: t, scale: scale) }
-        }
-        selFrame = currentSelectionBounds()
-        selectionHost.box.reset(to: selFrame.insetBy(dx: -6, dy: -6))
-    }
-
-    func recolorSelection(_ color: UIColor) {
-        guard !selStrokes.isEmpty else { return }
-        var d = canvas.drawing
-        for i in selStrokes where d.strokes.indices.contains(i) {
-            d.strokes[i].ink = PKInk(d.strokes[i].ink.inkType, color: color)
-        }
-        setDrawingUndoable(d)
-    }
-
-    /// A copy of the chosen strokes and text boxes a little lower and to the right, chosen in their place.
-    func duplicateSelection() {
-        guard hasSelection else { return }
-        let shift = CGAffineTransform(translationX: 24, y: 24)
-        var d = canvas.drawing
-        let first = d.strokes.count
-        let copies = selStrokes.compactMap { d.strokes.indices.contains($0) ? d.strokes[$0] : nil }.map { s -> PKStroke in
-            var c = s
-            c.transform = s.transform.concatenating(shift)
-            return c
-        }
-        d.strokes.append(contentsOf: copies)
-        if !copies.isEmpty { setDrawingUndoable(d) }
-        var newItems: Set<UUID> = []
-        for it in items.items where selItems.contains(it.id) && it.kind == .text {
-            var c = it
-            c.id = UUID()
-            c.x += 24
-            c.y += 24
-            items.add(c, edit: false, select: false)
-            newItems.insert(c.id)
-        }
-        select(strokes: Array(first..<(first + copies.count)), items: newItems)
-    }
-
-    func deleteSelection() {
-        guard hasSelection else { return }
-        if !selStrokes.isEmpty {
-            let gone = Set(selStrokes)
-            let d = PKDrawing(strokes: canvas.drawing.strokes.enumerated().filter { !gone.contains($0.offset) }.map(\.element))
-            setDrawingUndoable(d)
-        }
-        let boxes = selItems
-        selStrokes = []
-        selItems = []
-        items.removeItems(boxes)
-        clearSelection()
-        onSelectionChange?(false)
-    }
-
-    /// Copies the chosen strokes (as ink for this app, and as a picture for the others).
-    func copySelection() {
-        guard hasSelection else { return }
-        let strokes = selStrokes.compactMap { canvas.drawing.strokes.indices.contains($0) ? canvas.drawing.strokes[$0] : nil }
-        var entry: [String: Any] = [:]
-        if !strokes.isEmpty { entry[Self.inkPasteType] = PKDrawing(strokes: strokes).dataRepresentation() }
-        if let png = selectionPicture(in: selFrame)?.pngData() { entry["public.png"] = png }
-        UIPasteboard.general.setItems([entry])
-    }
-
-    /// Puts copied ink on the page, in the middle of what is in view. False if there is none.
-    func pasteInk() -> Bool {
-        guard let data = UIPasteboard.general.data(forPasteboardType: Self.inkPasteType),
-              let pasted = try? PKDrawing(data: data), !pasted.strokes.isEmpty else { return false }
-        let b = pasted.bounds
-        let c = visibleCenter
-        let shift = CGAffineTransform(translationX: c.x - b.midX, y: c.y - b.midY)
-        var d = canvas.drawing
-        let first = d.strokes.count
-        d.strokes.append(contentsOf: pasted.strokes.map { s -> PKStroke in
-            var n = s
-            n.transform = s.transform.concatenating(shift)
-            return n
-        })
-        setDrawingUndoable(d)
-        if lassoMode { select(strokes: Array(first..<d.strokes.count), items: []) }
-        return true
-    }
-
-    // MARK: Zoom window
-
-    private let zoomBoxLayer = CAShapeLayer()
-    private let zoomTap = UITapGestureRecognizer()
-    /// A tap with the finger on the page while the zoom window is open, in page points.
-    var onZoomTap: ((CGPoint) -> Void)?
-
-    private func setUpZoomBox() {
-        zoomBoxLayer.fillColor = UIColor(Theme.accent).withAlphaComponent(0.10).cgColor
-        zoomBoxLayer.strokeColor = UIColor(Theme.accent).cgColor
-        zoomBoxLayer.lineDashPattern = [5, 4]
-        zoomBoxLayer.zPosition = 14
-        items.layer.addSublayer(zoomBoxLayer)
-        zoomTap.addTarget(self, action: #selector(zoomTapped))
-        zoomTap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
-        zoomTap.isEnabled = false
-        canvas.addGestureRecognizer(zoomTap)
-    }
-
-    /// Shows where the zoom window writes (nil = hides it) and keeps that place in view.
-    func showZoomBox(_ r: CGRect?) {
-        if zoomBoxLayer.superlayer == nil { setUpZoomBox() }
-        zoomTap.isEnabled = r != nil
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        zoomBoxLayer.lineWidth = 1.5 / max(0.05, canvas.zoomScale)
-        zoomBoxLayer.path = r.map { UIBezierPath(rect: $0).cgPath }
-        CATransaction.commit()
-        guard let r else { return }
-        let z = canvas.zoomScale
-        let visible = CGRect(x: canvas.contentOffset.x / z, y: canvas.contentOffset.y / z,
-                             width: canvas.bounds.width / z, height: (canvas.bounds.height - 260) / z)
-        if !visible.contains(r) {
-            canvas.scrollRectToVisible(CGRect(x: r.minX * z - 20, y: r.minY * z - 60, width: r.width * z + 40, height: r.height * z + 120), animated: true)
-        }
-    }
-
-    @objc private func zoomTapped(_ g: UITapGestureRecognizer) {
-        onZoomTap?(g.location(in: items))
-    }
-
-    /// Strokes made elsewhere (the zoom window) added to the page, with undo.
-    func appendStrokes(_ strokes: [PKStroke]) {
-        guard !strokes.isEmpty else { return }
-        var d = canvas.drawing
-        d.strokes.append(contentsOf: strokes)
-        setDrawingUndoable(d)
-    }
-
-    /// A picture of a part of the page as it is now: paper, boxes and every visible layer.
-    func snapshot(of r: CGRect, scale: CGFloat) -> UIImage? {
-        guard let nb = notebook, let pg = page, r.width > 0, r.height > 0 else { return nil }
-        let dark = darkPaper
-        let fmt = UIGraphicsImageRendererFormat()
-        fmt.scale = scale
-        fmt.opaque = true
-        var below: [PKStroke] = [], above: [PKStroke] = []
-        if let lid = layerID, let i = pg.inkLayers.firstIndex(where: { $0.id == lid }), pg.inkLayers.count > 1 {
-            below = pg.inkLayers[..<i].filter { !$0.isHidden }.flatMap { Store.loadDrawing(nb.id, $0.id).strokes }
-            above = pg.inkLayers[(i + 1)...].filter { !$0.isHidden }.flatMap { Store.loadDrawing(nb.id, $0.id).strokes }
-        }
-        var ink = UIImage()
-        UITraitCollection(userInterfaceStyle: dark ? .dark : .light).performAsCurrent {
-            ink = PKDrawing(strokes: below + canvas.drawing.strokes + above).image(from: r, scale: scale)
-        }
-        let list = items.items
-        return UIGraphicsImageRenderer(size: r.size, format: fmt).image { ctx in
-            let c = ctx.cgContext
-            c.saveGState()
-            c.translateBy(x: -r.minX, y: -r.minY)
-            c.clip(to: r)
-            PageRenderer.drawBackground(nb, pg, in: c)
-            PageRenderer.drawItems(nb, list.filter { $0.kind != .tape }, dark: dark)
-            c.restoreGState()
-            ink.draw(in: CGRect(origin: .zero, size: r.size), blendMode: dark ? .normal : .multiply, alpha: 1)
-        }
-    }
-
-    // MARK: Lesson replay
-
-    private var replayFull: PKDrawing?
-    private var replayShown = -1
-
-    /// From now on the canvas shows only part of the ink, without saving it or letting anyone write.
-    func beginReplay() {
-        guard replayFull == nil else { return }
-        saveNow()
-        replayFull = canvas.drawing
-        replayShown = -1
-        canvas.drawingGestureRecognizer.isEnabled = false
-    }
-
-    /// Shows the strokes written up to `t`.
-    func showReplay(until t: Date) {
-        guard let full = replayFull else { return }
-        let visible = full.strokes.filter { $0.path.creationDate <= t }
-        guard visible.count != replayShown else { return }
-        replayShown = visible.count
-        loading = true
-        canvas.drawing = PKDrawing(strokes: visible)
-        loading = false
-    }
-
-    func endReplay() {
-        guard let full = replayFull else { return }
-        replayFull = nil
-        loading = true
-        canvas.drawing = full
-        loading = false
-        applyMode()
-    }
-
-    /// Reads the page again from its files (an earlier version was put back).
-    func reload(_ nb: Notebook, _ pg: PageInfo) {
-        saveNow()
-        page = nil
-        notebook = nil
-        load(nb, pg)
-    }
-
-    /// After a layer was hidden, shown or moved.
-    func reloadLayers(_ nb: Notebook, _ pg: PageInfo) {
-        notebook = nb
-        page = pg
-        renderLayers(force: true)
-    }
-
-    /// The page got bigger (a whiteboard growing): the content stays where it is.
-    func resize(_ pg: PageInfo) {
-        page = pg
-        paper.bounds = CGRect(origin: .zero, size: pg.size)
-        belowInk.bounds = CGRect(origin: .zero, size: pg.size)
-        aboveInk.bounds = CGRect(origin: .zero, size: pg.size)
-        items.bounds = CGRect(origin: .zero, size: pg.size)
-        links.bounds = CGRect(origin: .zero, size: pg.size)
-        selectionHost.bounds = CGRect(origin: .zero, size: pg.size)
-        if bounds.width > 40, bounds.height > 40 {
-            let whole = min((bounds.width - 20) / pg.size.width, (bounds.height - 20) / pg.size.height)
-            if whole.isFinite, whole > 0 { canvas.minimumZoomScale = min(canvas.minimumZoomScale, whole * 0.9) }
-        }
-        updateContent()
-    }
-
-    /// Redraws the paper (after the template changed).
-    func reloadPaper(_ nb: Notebook, _ pg: PageInfo) {
-        notebook = nb
-        page = pg
-        paperScale = 0
-        applyPaperStyle()
-        renderPaper()
-        renderLayers(force: true)
-    }
-
-    private func renderPaper() {
-        guard let nb = notebook, let pg = page else { return }
-        if nb.isBoard {
-            // a whiteboard can be huge: its paper is a pattern repeated, sharp at any size
-            if paperScale == 0 {
-                paperScale = 1
-                paper.image = nil
-                paper.backgroundColor = UIColor(patternImage: PageRenderer.tile(pg.template, paper: nb.paper))
-            }
-            return
-        }
-        paper.backgroundColor = nil
-        // Sharp enough for the current zoom, capped at ~24 Mpx.
-        let screen = window?.screen.scale ?? 2
-        let maxScale = sqrt(24_000_000 / (pg.size.width * pg.size.height))
-        let zoom = canvas.zoomScale.isFinite && canvas.zoomScale > 0 ? canvas.zoomScale : 1
-        let want = min(maxScale, max(2, zoom * screen))
-        guard want > paperScale * 1.15 || paperScale == 0 else { return }
-        paperScale = want
-        paper.image = PageRenderer.background(nb, pg, scale: want)
-    }
-
-    private func scheduleSave() {
-        dirty = true
-        saveTask?.cancel()
-        saveTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.2))
-            guard !Task.isCancelled else { return }
-            self?.saveNow()
-        }
-    }
-
-    func saveNow() {
-        saveTask?.cancel()
-        guard dirty, let nb = notebook, let pg = page else { return }
-        dirty = false
-        // how the page was before this writing, for … → Page → Earlier versions
-        PageHistory.snapshotIfDue(nb, pg)
-        Store.saveDrawing(canvas.drawing, nb.id, layerID ?? pg.id)
-        Store.saveItems(items.items, nb.id, pg.id)
-        inkBase = canvas.drawing.strokes
-        itemsBase = items.items
-        stamps = currentStamps()
-        onSaved?(pg)
-    }
-
-    private func itemsChanged() {
-        links.update(items.items, zoom: canvas.zoomScale)
-        scheduleSave()
-    }
-
     // MARK: Layout and zoom
 
     override func layoutSubviews() {
@@ -984,12 +327,12 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
     }
 
     /// The page is on dark paper: PencilKit shows the ink in its dark-mode colours.
-    private var darkPaper: Bool {
+    var darkPaper: Bool {
         guard let nb = notebook, let pg = page else { return false }
         return PageRenderer.isDark(nb, pg)
     }
 
-    private func applyPaperStyle() {
+    func applyPaperStyle() {
         let dark = darkPaper
         let style: UIUserInterfaceStyle = dark ? .dark : .light
         if canvas.overrideUserInterfaceStyle != style { canvas.overrideUserInterfaceStyle = style }
@@ -997,7 +340,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         multiplyInk()
     }
 
-    private func updateContent() {
+    func updateContent() {
         guard let pg = page else { return }
         let z = canvas.zoomScale
         guard z.isFinite, z > 0 else { return }
@@ -1087,7 +430,7 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
 
     // MARK: Modes
 
-    private func applyMode() {
+    func applyMode() {
         let free = drawMode && !listenMode && pick == nil && replayFull == nil
         canvas.drawingGestureRecognizer.isEnabled = free && shape == nil && !laser && !lassoMode
         lassoPan.isEnabled = free && lassoMode
@@ -1226,134 +569,6 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         return super.gestureRecognizerShouldBegin(g)
     }
 
-    // MARK: Laser
-
-    @objc private func laserDragged(_ g: UIPanGestureRecognizer) {
-        let p = g.location(in: items)
-        let now = CACurrentMediaTime()
-        switch g.state {
-        case .began:
-            let t = g.translation(in: items)
-            laserPoints.append((CGPoint(x: p.x - t.x, y: p.y - t.y), now, true))
-            laserPoints.append((p, now, false))
-            startLaser()
-        case .changed:
-            laserPoints.append((p, now, false))
-        default:
-            break
-        }
-    }
-
-    private func startLaser() {
-        guard laserLink == nil else { return }
-        let link = CADisplayLink(target: self, selector: #selector(laserTick))
-        link.add(to: .main, forMode: .common)
-        laserLink = link
-    }
-
-    @objc private func laserTick() {
-        let now = CACurrentMediaTime()
-        let life: CFTimeInterval = 0.7
-        // drop the old end of the trail, keeping a start marker on what remains
-        while let first = laserPoints.first, now - first.t > life {
-            laserPoints.removeFirst()
-            if !first.start, let next = laserPoints.first, !next.start { laserPoints[0].start = true }
-        }
-        let z = max(0.05, canvas.zoomScale)
-        let path = UIBezierPath()
-        for pt in laserPoints {
-            if pt.start || path.isEmpty { path.move(to: pt.p) } else { path.addLine(to: pt.p) }
-        }
-        if let last = laserPoints.last {
-            // the dot at the tip
-            let r = 4.5 / z
-            path.move(to: CGPoint(x: last.p.x + r, y: last.p.y))
-            path.addArc(withCenter: last.p, radius: r, startAngle: 0, endAngle: .pi * 2, clockwise: true)
-        }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        laserGlow.lineWidth = 9 / z
-        laserCore.lineWidth = 3.5 / z
-        laserGlow.path = path.cgPath
-        laserCore.path = path.cgPath
-        CATransaction.commit()
-        let active = laserPan.state == .began || laserPan.state == .changed
-        if laserPoints.isEmpty && !active {
-            laserLink?.invalidate()
-            laserLink = nil
-            laserGlow.path = nil
-            laserCore.path = nil
-        }
-    }
-
-    // MARK: Listening
-
-    @objc private func listenTapped(_ g: UITapGestureRecognizer) {
-        let p = g.location(in: items)
-        onInkTap?(strokeDate(at: p))
-    }
-
-    /// When the stroke under a point was written: the closest stroke within a finger's reach.
-    func strokeDate(at p: CGPoint) -> Date? {
-        let reach: CGFloat = 16 / max(0.3, min(2, canvas.zoomScale))
-        var best: (d: CGFloat, date: Date)?
-        for s in canvas.drawing.strokes.reversed() {
-            guard s.renderBounds.insetBy(dx: -reach, dy: -reach).contains(p) else { continue }
-            for pt in s.path.interpolatedPoints(by: .distance(3)) {
-                let q = pt.location.applying(s.transform)
-                let d = hypot(q.x - p.x, q.y - p.y)
-                if d < reach, d < (best?.d ?? .infinity) { best = (d, s.path.creationDate) }
-            }
-        }
-        return best?.date
-    }
-
-    private func clamped(_ p: CGPoint) -> CGPoint {
-        guard let pg = page else { return p }
-        return CGPoint(x: min(max(0, p.x), pg.size.width), y: min(max(0, p.y), pg.size.height))
-    }
-
-    @objc private func shapeDragged(_ g: UIPanGestureRecognizer) {
-        guard let style = shape else { return }
-        let p = clamped(g.location(in: items))
-        switch g.state {
-        case .began, .changed:
-            if g.state == .began {
-                // the drag is recognised after a few points of movement: start where the touch began
-                let t = g.translation(in: items)
-                shapeStart = clamped(CGPoint(x: p.x - t.x, y: p.y - t.y))
-            }
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            shapeLayer.strokeColor = style.color.cgColor
-            shapeLayer.lineWidth = style.width
-            shapeLayer.path = Shapes.path(style.kind, from: shapeStart, to: p, width: style.width)
-            CATransaction.commit()
-        case .ended:
-            shapeLayer.path = nil
-            guard hypot(p.x - shapeStart.x, p.y - shapeStart.y) > 6 else { return }
-            addShape(style, from: shapeStart, to: p)
-        default:
-            shapeLayer.path = nil
-        }
-    }
-
-    /// Puts a shape on the page as ink (it can be erased, moved with the lasso and undone).
-    func addShape(_ style: ShapeStyle, from a: CGPoint, to b: CGPoint) {
-        var drawing = canvas.drawing
-        drawing.strokes.append(Shapes.stroke(style.kind, from: a, to: b, color: style.color, width: style.width))
-        setDrawingUndoable(drawing)
-    }
-
-    private func setDrawingUndoable(_ new: PKDrawing) {
-        let old = canvas.drawing
-        canvas.undoManager?.registerUndo(withTarget: self) { target in
-            MainActor.assumeIsolated { target.setDrawingUndoable(old) }
-        }
-        canvas.drawing = new
-        onUndoChange?()
-    }
-
     // MARK: Canvas delegate
 
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
@@ -1376,383 +591,36 @@ final class PageCanvasView: UIView, PKCanvasViewDelegate, UIGestureRecognizerDel
         setDrawingUndoable(PKDrawing())
     }
 
-    // MARK: Spelling
-
-    func showMisspelled(_ rects: [CGRect]) {
-        spellRects = rects
-        spellTap.isEnabled = !rects.isEmpty
-        let path = UIBezierPath()
-        for r in rects {
-            // a wavy line under the word
-            let y = r.maxY + 1.5
-            var x = r.minX
-            path.move(to: CGPoint(x: x, y: y))
-            var up = true
-            while x < r.maxX {
-                let nx = min(r.maxX, x + 2.5)
-                path.addQuadCurve(to: CGPoint(x: nx, y: y), controlPoint: CGPoint(x: (x + nx) / 2, y: y + (up ? -2 : 2)))
-                up.toggle()
-                x = nx
-            }
-        }
-        spellLayer.path = rects.isEmpty ? nil : path.cgPath
-    }
-
-    private func spellIndex(at p: CGPoint) -> Int? {
-        spellRects.firstIndex { $0.insetBy(dx: -6, dy: -8).contains(p) }
-    }
-
-    @objc private func spellTapped(_ g: UITapGestureRecognizer) {
-        if let i = spellIndex(at: g.location(in: items)) { onSpellTap?(i) }
-    }
-
-    // MARK: Tape and areas
-
-    @objc private func pickDragged(_ g: UIPanGestureRecognizer) {
-        guard let mode = pick else { return }
-        let p = clamped(g.location(in: items))
-        switch g.state {
-        case .began, .changed:
-            if g.state == .began {
-                let t = g.translation(in: items)
-                pickStart = clamped(CGPoint(x: p.x - t.x, y: p.y - t.y))
-            }
-            let r = pickRect(mode, from: pickStart, to: p)
-            let z = max(0.05, canvas.zoomScale)
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            switch mode {
-            case .tape(let hex):
-                pickLayer.fillColor = UIColor(hex: hex).withAlphaComponent(0.85).cgColor
-                pickLayer.strokeColor = nil
-                pickLayer.lineDashPattern = nil
-            case .area:
-                pickLayer.fillColor = UIColor(Theme.accent).withAlphaComponent(0.12).cgColor
-                pickLayer.strokeColor = UIColor(Theme.accent).cgColor
-                pickLayer.lineWidth = 2 / z
-                pickLayer.lineDashPattern = [NSNumber(value: Double(6 / z)), NSNumber(value: Double(4 / z))]
-            }
-            pickLayer.path = UIBezierPath(roundedRect: r, cornerRadius: 2).cgPath
-            CATransaction.commit()
-        case .ended:
-            pickLayer.path = nil
-            let r = pickRect(mode, from: pickStart, to: p)
-            guard r.width > 8, r.height > 8 else { return }
-            switch mode {
-            case .tape(let hex): addTape(r, color: hex)
-            case .area: onPick?(r)
-            }
-        default:
-            pickLayer.path = nil
+    // MARK: Lasso selection (state; the code is in PageCanvasView+Selection.swift)
+    /// The lasso: drawing round strokes and boxes chooses them; then they can be moved, made
+    /// bigger or smaller, turned, recoloured, copied, duplicated or deleted.
+    var lassoMode = false {
+        didSet {
+            guard lassoMode != oldValue else { return }
+            if !lassoMode { clearSelection() }
+            applyMode()
         }
     }
+    let selectionHost = SelectionHost()
+    let lassoPan = UIPanGestureRecognizer()
+    let lassoTap = UITapGestureRecognizer()
+    let lassoLayer = CAShapeLayer()
+    var lassoPoints: [CGPoint] = []
+    /// Indices of the chosen strokes in the canvas's drawing, and the chosen boxes.
+    var selStrokes: [Int] = []
+    var selItems: Set<UUID> = []
+    var selOriginal: PKDrawing?
+    var selFrame = CGRect.zero
+    /// Called when something gets chosen or nothing is chosen any more.
+    var onSelectionChange: ((Bool) -> Void)?
 
-    /// The rectangle dragged; tape dragged along a line becomes a strip one line high.
-    private func pickRect(_ mode: Pick, from a: CGPoint, to b: CGPoint) -> CGRect {
-        var r = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
-        if case .tape = mode, r.height < 20 {
-            let mid = (a.y + b.y) / 2
-            r = CGRect(x: r.minX, y: mid - 11, width: max(r.width, 1), height: 22)
-        }
-        return r
-    }
+    // MARK: Zoom window (state; the code is in PageCanvasView+Areas.swift)
+    let zoomBoxLayer = CAShapeLayer()
+    let zoomTap = UITapGestureRecognizer()
+    /// A tap with the finger on the page while the zoom window is open, in page points.
+    var onZoomTap: ((CGPoint) -> Void)?
 
-    func addTape(_ r: CGRect, color: String) {
-        var item = PageItem(kind: .tape, x: r.minX, y: r.minY, w: r.width, h: r.height)
-        item.color = color
-        items.add(item, edit: false, select: false)
-    }
-
-    @objc private func tapeTapped(_ g: UITapGestureRecognizer) {
-        guard let t = items.tape(at: g.location(in: items)) else { return }
-        items.setCovered(t.id, !t.isCovered)
-    }
-
-    /// Covers all the tape on the page again; false if none was uncovered.
-    @discardableResult
-    func coverAllTapes() -> Bool { items.coverAllTapes() }
-
-    var hasTape: Bool { items.hasTape }
-
-    /// Outlines an area already chosen; nil removes it.
-    func mark(_ r: CGRect?) {
-        guard let r else { markLayer.path = nil; return }
-        let z = max(0.05, canvas.zoomScale)
-        markLayer.fillColor = UIColor(Theme.accent).withAlphaComponent(0.18).cgColor
-        markLayer.strokeColor = UIColor(Theme.accent).cgColor
-        markLayer.lineWidth = 2 / z
-        markLayer.path = UIBezierPath(roundedRect: r, cornerRadius: 2).cgPath
-    }
-
-    /// The strokes mostly inside an area.
-    func strokes(in r: CGRect) -> [PKStroke] {
-        canvas.drawing.strokes.filter { Self.mostlyInside($0, r) }
-    }
-
-    private static func mostlyInside(_ s: PKStroke, _ r: CGRect) -> Bool {
-        let b = s.renderBounds
-        let i = b.intersection(r)
-        guard !i.isNull else { return false }
-        return i.width * i.height >= 0.5 * max(1, b.width * b.height) || r.contains(CGPoint(x: b.midX, y: b.midY))
-    }
-
-    /// Removes the strokes mostly inside an area (undoable).
-    func removeStrokes(in r: CGRect) {
-        var d = canvas.drawing
-        let before = d.strokes.count
-        d.strokes.removeAll { Self.mostlyInside($0, r) }
-        guard d.strokes.count != before else { return }
-        setDrawingUndoable(d)
-    }
-
-    /// What is inside an area (ink, text and pictures, without the paper and the tape) as a picture
-    /// with a transparent background; nil when the area is empty.
-    func cutout(_ r: CGRect) -> UIImage? {
-        guard let nb = notebook else { return nil }
-        let list = items.items.filter { $0.kind != .tape && $0.frame.intersects(r) }
-        let ink = canvas.drawing.strokes.filter { $0.renderBounds.intersects(r) }
-        guard !list.isEmpty || !ink.isEmpty else { return nil }
-        let scale: CGFloat = 3
-        var inkImage = UIImage()
-        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
-            inkImage = PKDrawing(strokes: ink).image(from: r, scale: scale)
-        }
-        let fmt = UIGraphicsImageRendererFormat()
-        fmt.scale = scale
-        fmt.opaque = false
-        return UIGraphicsImageRenderer(size: r.size, format: fmt).image { ctx in
-            ctx.cgContext.saveGState()
-            ctx.cgContext.translateBy(x: -r.minX, y: -r.minY)
-            PageRenderer.drawItems(nb, list)
-            ctx.cgContext.restoreGState()
-            inkImage.draw(in: CGRect(origin: .zero, size: r.size))
-        }
-    }
-
-    /// A text box over an area, for typed text that replaces handwriting.
-    func addTextBox(_ text: String, in r: CGRect, fontSize: Double) {
-        var item = PageItem(kind: .text, x: r.minX, y: r.minY, w: max(60, r.width), h: max(30, r.height))
-        item.text = text
-        item.fontSize = fontSize
-        items.add(item, edit: false, select: false)
-    }
-
-    // MARK: Shapes drawn by hand
-
-    @objc private func inkGesture(_ g: UIGestureRecognizer) {
-        guard snapShapes, let tool = canvas.tool as? PKInkingTool else { return }
-        let p = g.location(in: items)
-        let screen = g.location(in: self)
-        switch g.state {
-        case .began:
-            hoverMark.hide()
-            inkPoints = [p]
-            snapOutline = nil
-            pendingSnap = nil
-            holdAnchor = screen
-            armHold(tool)
-        case .changed:
-            inkPoints.append(p)
-            if hypot(screen.x - holdAnchor.x, screen.y - holdAnchor.y) > 5 {
-                holdAnchor = screen
-                if snapOutline != nil {
-                    snapOutline = nil
-                    shapeLayer.path = nil
-                }
-                armHold(tool)
-            }
-        case .ended:
-            holdWork?.cancel()
-            if let o = snapOutline {
-                pendingSnap = o
-                // if PencilKit does not hand the stroke over, do not leave the preview behind
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-                    guard let self, self.pendingSnap == o else { return }
-                    self.pendingSnap = nil
-                    self.shapeLayer.path = nil
-                }
-            }
-            snapOutline = nil
-        default:
-            holdWork?.cancel()
-            snapOutline = nil
-            shapeLayer.path = nil
-        }
-    }
-
-    private func armHold(_ tool: PKInkingTool) {
-        holdWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            MainActor.assumeIsolated { self?.holdFired(tool) }
-        }
-        holdWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
-    }
-
-    private func holdFired(_ tool: PKInkingTool) {
-        let g = canvas.drawingGestureRecognizer
-        guard g.state == .began || g.state == .changed, let r = ShapeRecognizer.recognize(inkPoints) else { return }
-        // the highlighter only straightens lines
-        if tool.inkType == .marker, r.kind != .line { return }
-        snapOutline = r.points
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        let light = tool.color.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
-        shapeLayer.strokeColor = light.withAlphaComponent(tool.inkType == .marker ? 0.5 : 0.85).cgColor
-        shapeLayer.lineWidth = max(1.5, tool.width * (tool.inkType == .marker ? 1 : 0.8))
-        let path = CGMutablePath()
-        path.addLines(between: r.points)
-        shapeLayer.path = path
-        CATransaction.commit()
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
-
-    /// Replaces the stroke just drawn with the clean shape, in the same ink.
-    private func snapLastStroke(to outline: [CGPoint]) {
-        shapeLayer.path = nil
-        var d = canvas.drawing
-        guard let last = d.strokes.last, abs(last.path.creationDate.timeIntervalSinceNow) < 10 else { return }
-        let pts = Array(last.path)
-        guard !pts.isEmpty else { return }
-        let median = pts.map { $0.size.width }.sorted()[pts.count / 2]
-        let opacity = pts.map(\.opacity).sorted()[pts.count / 2]
-        let type = last.ink.inkType
-        // the pen thins strokes made in code, so the shape uses the even ink at the same width
-        let ink = type == .pen ? PKInk(.monoline, color: last.ink.color) : last.ink
-        let s = type == .pen ? median * 0.565 + 1.85 : median
-        d.strokes[d.strokes.count - 1] = Shapes.stroke(points: outline, ink: ink, size: s, opacity: opacity)
-        setDrawingUndoable(d)
-    }
-
-    // MARK: Boxes
-
-    /// A new text box in the middle of the screen; with `text` it is filled in, otherwise it opens for typing.
-    func addText(_ text: String? = nil) {
-        if drawMode { drawMode = false }
-        let c = visibleCenter
-        let w = min(320, (page?.size.width ?? 595) * 0.6)
-        var item = PageItem(kind: .text, x: c.x - w / 2, y: c.y - 30, w: w, h: 60)
-        if let text {
-            item.text = text
-            // tall enough for the whole text, so nothing is cut when the page is exported
-            let inset = PageRenderer.textInset
-            let box = (text as NSString).boundingRect(with: CGSize(width: w - inset.left - inset.right, height: .greatestFiniteMagnitude),
-                                                      options: [.usesLineFragmentOrigin], attributes: PageRenderer.textAttributes(item), context: nil)
-            item.h = Double(box.height.rounded(.up) + inset.top + inset.bottom + 2)
-            if let pg = page {
-                item.y = Double(min(max(8, c.y - box.height / 2), max(8, pg.size.height - CGFloat(item.h) - 8)))
-            }
-        }
-        items.add(item, edit: text == nil)
-    }
-
-    /// A picture in the middle of the screen; stickers keep their transparency and come in small.
-    func addImage(_ img: UIImage, sticker: Bool = false) {
-        guard let nb = notebook, let pg = page, let (name, size) = Store.saveImage(img, nb.id, keepAlpha: sticker) else { return }
-        if drawMode { drawMode = false }
-        let c = visibleCenter
-        let w = sticker ? min(140, size.width / 2) : min(pg.size.width * 0.6, size.width)
-        let h = w * size.height / max(1, size.width)
-        var item = PageItem(kind: .image, x: c.x - w / 2, y: c.y - h / 2, w: w, h: h)
-        item.image = name
-        items.add(item, edit: false)
-    }
-
-    func updateSelected(_ change: (inout PageItem) -> Void) { items.updateSelected(change) }
-    func deleteSelected() { items.deleteSelected() }
-    func bringSelectedToFront() { items.bringSelectedToFront() }
-}
-
-/// A label with room around its text.
-final class PaddedLabel: UILabel {
-    override var intrinsicContentSize: CGSize {
-        let s = super.intrinsicContentSize
-        return CGSize(width: s.width + 28, height: s.height + 14)
-    }
-
-    override func sizeThatFits(_ size: CGSize) -> CGSize {
-        let s = super.sizeThatFits(size)
-        return CGSize(width: s.width + 28, height: s.height + 14)
-    }
-
-    override func drawText(in rect: CGRect) {
-        super.drawText(in: rect.insetBy(dx: 14, dy: 7))
-    }
-}
-
-/// The PencilKit canvas, which does not start a stroke on a link button so the button gets the tap.
-final class LinkAwareCanvas: PKCanvasView {
-    var blocksDrawing: ((CGPoint) -> Bool)?
-
-    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
-        if g === drawingGestureRecognizer, blocksDrawing?(g.location(in: self)) == true { return false }
-        return super.gestureRecognizerShouldBegin(g)
-    }
-}
-
-/// Round buttons on the corner of the boxes that link to a page. They keep the same size on
-/// screen at any zoom and only they take touches.
-@MainActor
-final class LinkLayer: UIView {
-    var onTap: ((UUID) -> Void)?
-    private var buttons: [UUID: UIButton] = [:]
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        button(at: point)
-    }
-
-    func button(at p: CGPoint) -> UIButton? {
-        buttons.values.first { !$0.isHidden && $0.frame.insetBy(dx: -6, dy: -6).contains(p) }
-    }
-
-    func update(_ items: [PageItem], zoom: CGFloat) {
-        let z = zoom.isFinite && zoom > 0 ? zoom : 1
-        let linked = items.filter { $0.link != nil }
-        let keep = Set(linked.map(\.id))
-        for (id, b) in buttons where !keep.contains(id) {
-            b.removeFromSuperview()
-            buttons[id] = nil
-        }
-        for item in linked {
-            let b = buttons[item.id] ?? makeButton(item.id)
-            b.accessibilityValue = item.text
-            b.tag = 0
-            b.transform = CGAffineTransform(scaleX: 1 / z, y: 1 / z)
-            // on the right end of the box, vertically centred on its first line
-            let side: CGFloat = 30
-            b.bounds = CGRect(x: 0, y: 0, width: side, height: side)
-            b.center = CGPoint(x: item.frame.maxX + side / (2 * z), y: item.frame.minY + min(item.frame.height, 34) / 2)
-            linkTargets[item.id] = item.link
-        }
-    }
-
-    private var linkTargets: [UUID: UUID] = [:]
-
-    private func makeButton(_ id: UUID) -> UIButton {
-        var conf = UIButton.Configuration.filled()
-        conf.image = UIImage(systemName: "arrow.forward", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .bold))
-        conf.baseBackgroundColor = UIColor(Theme.accent)
-        conf.baseForegroundColor = UIColor(Theme.bg)
-        conf.cornerStyle = .capsule
-        let b = UIButton(configuration: conf)
-        b.accessibilityLabel = String(localized: "Vai alla pagina collegata")
-        b.addAction(UIAction { [weak self] _ in
-            guard let self, let target = self.linkTargets[id] else { return }
-            self.onTap?(target)
-        }, for: .touchUpInside)
-        b.layer.shadowColor = UIColor.black.cgColor
-        b.layer.shadowOpacity = 0.3
-        b.layer.shadowRadius = 2
-        b.layer.shadowOffset = CGSize(width: 0, height: 1)
-        addSubview(b)
-        buttons[id] = b
-        return b
-    }
+    // MARK: Lesson replay (state; the code is in PageCanvasView+Loading.swift)
+    var replayFull: PKDrawing?
+    var replayShown = -1
 }
