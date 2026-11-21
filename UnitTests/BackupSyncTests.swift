@@ -251,6 +251,63 @@ final class BackupSyncTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: to.appendingPathComponent("fuori.txt").path))
     }
 
+    func testOldCopiesDoNotPileUp() throws {
+        let fm = FileManager.default
+        let from = temp.appendingPathComponent("da4", isDirectory: true)
+        let out = temp.appendingPathComponent("uscita4", isDirectory: true)
+        try fm.createDirectory(at: out, withIntermediateDirectories: true)
+        _ = try makeLibrary(from, notebook: UUID())
+        let other = out.appendingPathComponent("altro.zip")
+        try Data([1]).write(to: other)
+
+        let first = try LibraryBackup.export(from: from, to: out, now: Date(timeIntervalSince1970: 1_800_000_000))
+        let second = try LibraryBackup.export(from: from, to: out, now: Date(timeIntervalSince1970: 1_800_000_600))
+        XCTAssertNotEqual(first, second)
+        XCTAssertFalse(fm.fileExists(atPath: first.path), "the copy made before is gone")
+        XCTAssertTrue(fm.fileExists(atPath: second.path))
+        XCTAssertTrue(fm.fileExists(atPath: other.path), "other files stay")
+
+        // what the app does when it starts
+        XCTAssertEqual(LibraryBackup.removeCopies(in: out), 1)
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.path), ["altro.zip"])
+    }
+
+    func testCopyAndRestoreTellHowFarTheyGot() throws {
+        final class Seen: @unchecked Sendable {
+            private let lock = NSLock()
+            private var list: [Double] = []
+            func add(_ v: Double) { lock.lock(); list.append(v); lock.unlock() }
+            var values: [Double] { lock.lock(); defer { lock.unlock() }; return list }
+        }
+        let from = temp.appendingPathComponent("da5", isDirectory: true)
+        let to = temp.appendingPathComponent("a5", isDirectory: true)
+        let id = UUID()
+        _ = try makeLibrary(from, notebook: id)
+        // a few more files, so there is something to count
+        let pics = from.appendingPathComponent("Quaderni/\(id.uuidString)/images", isDirectory: true)
+        for i in 0..<30 { try Data(repeating: UInt8(i), count: 5000).write(to: pics.appendingPathComponent("f\(i).jpg")) }
+
+        let made = Seen()
+        let zip = try LibraryBackup.export(from: from, to: temp, progress: { made.add($0) })
+        let seen = made.values
+        XCTAssertFalse(seen.isEmpty)
+        XCTAssertEqual(seen, seen.sorted(), "only forward")
+        XCTAssertEqual(seen.last, 1)
+        XCTAssertLessThanOrEqual(seen.count, 101, "not one call per file")
+
+        let back = Seen()
+        let s = try LibraryBackup.restore(zip, into: to, trash: to.appendingPathComponent("Cestino"), progress: { back.add($0) })
+        XCTAssertEqual(s.restored, [id])
+        XCTAssertEqual(back.values, back.values.sorted())
+        XCTAssertGreaterThan(back.values.count, 2)
+        XCTAssertEqual(back.values.last, 1)
+
+        // nothing to put back is done at once
+        let none = Seen()
+        _ = try LibraryBackup.restore(zip, into: to, trash: to.appendingPathComponent("Cestino"), progress: { none.add($0) })
+        XCTAssertEqual(none.values, [1])
+    }
+
     func testNoCopyOfAnEmptyLibrary() throws {
         XCTAssertThrowsError(try LibraryBackup.export(from: temp.appendingPathComponent("vuota"), to: temp))
     }

@@ -572,7 +572,6 @@
 "Il file non è una copia di Quaderno Appunti." = "The file is not a copy of Quaderno Appunti.";
 "Non ci sono quaderni da copiare." = "There are no notebooks to copy.";
 "Copia pronta (%@): salvala in File o su un computer." = "Copy ready (%@): save it in Files or on a computer.";
-"Copia non riuscita: %@" = "The copy failed: %@";
 "Ripristino non riuscito: %@" = "Restoring failed: %@";
 "Non manca nessun quaderno: quelli della copia ci sono già tutti." = "No notebook is missing: all those in the copy are already here.";
 "Nella copia non ci sono quaderni." = "There are no notebooks in the copy.";
@@ -581,6 +580,7 @@
 "Copia della libreria" = "Copy of the library";
 "Un solo file con tutti i quaderni, le cartelle, gli adesivi, le carte e le statistiche di studio. Tienilo in File, su iCloud Drive o su un computer: se cambi telefono o reinstalli l'app, da qui rimetti tutto com'era." = "One file with all the notebooks, folders, stickers, papers and study stats. Keep it in Files, on iCloud Drive or on a computer: if you change phone or reinstall the app, from here you put everything back as it was.";
 "Preparo la copia…" = "Making the copy…";
+"Ripristino i quaderni…" = "Restoring the notebooks…";
 "Crea una copia" = "Make a copy";
 "Ripristina da una copia…" = "Restore from a copy…";
 "Il ripristino non sostituisce niente: i quaderni che hai già restano come sono e tornano solo quelli che mancano." = "Restoring replaces nothing: the notebooks you already have stay as they are and only the missing ones come back.";
